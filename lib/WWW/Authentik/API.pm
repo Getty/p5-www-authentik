@@ -1012,8 +1012,14 @@ sub ensure_stage {
     wanted => $wanted,
     find   => sub {
       my $stage = $self->find_stage( $rep{name} ) or return;
-      # /stages/all/ gives out a reduced representation; compare the whole one
-      return $self->get_stage( $type, $stage->{pk} );
+      # a stage name is unique across all types, so a name that belongs to
+      # another type is a clash, not something to create or update
+      my $whole = eval { $self->get_stage( $type, $stage->{pk} ) };
+      return $whole if $whole;
+      $self->_missing($@);
+      WWW::Authentik::Error::Validation->throw( message => 'ensure_stage: there already is a stage named "'
+        .$rep{name}.'", but not of the type '.$type.' ('.( $stage->{component} // 'unknown component' ).'). '
+        .'Stage names are unique across all types in authentik.' );
     },
     create => sub { $self->create_stage( $type, $wanted ) },
     update => sub { $self->update_stage( $type, $_[0]{pk}, $_[1] ) }

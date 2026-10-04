@@ -149,6 +149,12 @@ subtest 'ensure_stage' => sub {
   is_deeply( [ keys %{ $alone->field_errors } ], ['not_configured_action'],
     'authentik refuses configure without a configuration stage' );
 
+  # a stage name is unique across the types, so a clash must say so and not
+  # come out as a confusing 404 from the typed endpoint
+  my $clash = error_of { $api->ensure_stage( user_login => name => 'probe-password' ) };
+  isa_ok( $clash, 'WWW::Authentik::Error::Validation', 'a name that belongs to another stage type' );
+  like( "$clash", qr/not of the type user_login/, 'and says which type it really is' );
+
   isa_ok( error_of { $api->ensure_stage( all => name => 'x' ) }, 'WWW::Authentik::Error::Validation', 'through /stages/all/' );
   isa_ok( error_of { $api->ensure_stage( 'password' ) }, 'WWW::Authentik::Error::Validation', 'without a name' );
 };

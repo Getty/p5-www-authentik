@@ -514,10 +514,19 @@ sub _stages {
     return $response;
   }
   my ( $stage ) = grep { $_->{pk} eq $id } @all;
-  return $self->_missing( defined $type ? 'Stage' : 'Stage' ) unless $stage;
+  # a typed endpoint only knows the stages of its own type
+  $stage = undef if $stage && defined $type && ( $stage->{_type} // '' ) ne $type;
+  return $self->_missing( defined $type ? _stage_model($type) : 'Stage' ) unless $stage;
   return $self->_json( 200, defined $type ? $stage : { map { $_ => $stage->{$_} } grep { $_ ne '_type' } keys %$stage } )
     if $method eq 'GET';
   return $self->_detail( 'stages', $method, $id, $body );
+}
+
+# the model name authentik puts into a 404 of a typed stage endpoint
+sub _stage_model {
+  my ( $type ) = @_;
+  my $name = join '', map { ucfirst } split /[\/_]/, $type;
+  return $name.'Stage';
 }
 
 sub _list {
