@@ -329,11 +329,32 @@ sofort). Es gibt kein Mapping und keine Stage-Einstellung, die dafür nötig wä
 nennt `claims_supported: [..., "auth_time", "acr", "amr", ...]`.
 
 Für `Airlock::Upstream::Authentik` heißt das: `mfa` in `amr` ist das Signal für den zweiten
-Faktor; `acr` taugt nicht zur Unterscheidung. Wer TOTP erzwingen will, stellt an der
-Authenticator-Validation-Stage `not_configured_action` von `skip` auf `configure` oder `deny`
-(`ensure_stage('authenticator/validate', name => 'default-authentication-mfa-validation',
-not_configured_action => 'deny')`); das wurde nicht beobachtet, nur die Felder (`device_classes`,
-`last_auth_threshold: "seconds=0"`, `configuration_stages`) wurden gelesen.
+Faktor; `acr` taugt nicht zur Unterscheidung.
+
+**Erzwungenes TOTP** (beobachtet 2026-10-04, Nachtrag aus Abschnitt 12). Wer den zweiten
+Faktor verlangen will, stellt `not_configured_action` an der Validation-Stage um:
+
+```perl
+$api->ensure_stage( 'authenticator/validate',
+  name                 => 'default-authentication-mfa-validation',
+  not_configured_action => 'deny',
+);
+```
+
+| Einstellung | Nutzer ohne Authenticator | Nutzer mit TOTP |
+|---|---|---|
+| `skip` (Standard) | Login geht durch, `amr: ["pwd"]` | Code verlangt, `amr: ["pwd","mfa"]` |
+| `deny` | `200 {"component":"ak-stage-access-denied","error_message":"No (allowed) MFA authenticator configured."}`, keine Sitzung | unverändert `amr: ["pwd","mfa"]` |
+| `configure` (braucht `configuration_stages`) | der Setup-Stage wird eingeschoben: `200 {"component":"ak-stage-authenticator-totp","config_url":"otpauth://…"}` | unverändert |
+
+`configure` ohne `configuration_stages` lehnt authentik ab:
+`400 {"not_configured_action":["When \"Not configured action\" is set to \"Configure\", you
+must set a configuration stage."]}`. Beide Felder müssen in **einem** `PATCH` kommen; das tut
+`ensure_stage` ohnehin, weil es alle abweichenden Schlüssel zusammen schickt.
+
+`deny` ändert an `amr`, `acr` und `auth_time` eines erfolgreichen Logins nichts: Dieselben
+Werte wie bei `skip`. Der Unterschied ist allein, ob ein Nutzer ohne zweiten Faktor
+hereinkommt.
 
 ## 7. Fehler
 
@@ -436,6 +457,8 @@ Jede Zeile ist ein tatsächlich abgesetzter Aufruf. Pfade in 8.1 relativ zu
 | `POST /stages/password/` (`name`, `backends`) | 201; gleicher `name` 400 `{"name":["stage with this name already exists."]}`, auch an `/stages/user_login/` |
 | `PATCH` / `PUT /stages/password/{uuid}/` | 200; `backends`-Reihenfolge bleibt |
 | `GET /stages/authenticator/validate/`, `/stages/password/`, `/stages/identification/`, `/stages/authenticator/totp/`, `/stages/user_login/` | 200, typisierte Felder (`not_configured_action: skip`, `device_classes`, `last_auth_threshold`, `backends`, `user_fields`, `digits`, `session_duration`) |
+| `PATCH /stages/authenticator/validate/{uuid}/` `{"not_configured_action":"deny"}` | 200 |
+| dasselbe mit `"configure"` ohne `configuration_stages` / mit beiden Feldern in einem `PATCH` | 400 `{"not_configured_action":["When \"Not configured action\" is set to \"Configure\", you must set a configuration stage."]}` / 200 |
 | `PUT /stages/authenticator/validate/{uuid}/` mit `GET`-Body | 200 |
 | `DELETE /stages/password/{uuid}/` mit Binding | 204; Binding danach weg |
 | `GET /flows/bindings/?target=<slug>` / `?target=<uuid>` | 400 `{"target":["… is not a valid UUID."]}` / 200 mit `order`, `stage`, `stage_obj`, `evaluate_on_plan`, `re_evaluate_policies` |
@@ -529,6 +552,21 @@ POST …  {"component":"ak-stage-authenticator-totp","code":"<TOTP aus secret>"}
 Danach listet `GET /api/v3/authenticators/admin/totp/?user=<pk>` das Gerät. Beim nächsten
 Login verlangt die Standard-Validation-Stage den Code (Abschnitt 6.2).
 
+Mit `not_configured_action: deny` endet der Login eines Nutzers ohne Authenticator nach der
+Passwort-Stage:
+
+```
+POST …  {"component":"ak-stage-password","password":"…"}
+     302 → GET: 200 {"component":"ak-stage-access-denied","pending_user":"probe-dave",
+                     "error_message":"No (allowed) MFA authenticator configured."}
+GET  /api/v3/core/users/me/ (mit Cookies)   200 {"user":{"username":null}}
+```
+
+Mit `configure` und dem TOTP-Setup-Stage in `configuration_stages` kommt stattdessen der
+Setup-Stage mitten im Login (`200 {"component":"ak-stage-authenticator-totp","config_url":…}`),
+und die Sitzung entsteht erst, nachdem er abgeschlossen ist. Ein Nutzer, der TOTP schon hat,
+merkt von beiden Einstellungen nichts.
+
 Für den Device-Flow braucht die Brand ein `flow_device_code`; gesetzt wurde ein leerer Flow
 mit `designation: stage_configuration`. Mit Login-Cookies führt `GET /device?code=<user_code>`
 auf `/if/flow/default-provider-authorization-implicit-consent/?code=…`; der Executor dafür
@@ -543,8 +581,9 @@ Deshalb im Plan vor dem Bauen zu prüfen:
   auch dann 200; was `GET /device?code=` dann tut, wurde nicht geprüft).
 - `slow_down` und `expired_token` am Device-Endpunkt: der Poll nach Ablauf war
   `invalid_grant`, ein zu schneller Poll `authorization_pending`.
-- `not_configured_action: deny|configure` an der Validation-Stage, `last_auth_threshold`,
-  WebAuthn, Static Tokens, Duo, SMS, E-Mail als zweiter Faktor; `amr` dafür.
+- `last_auth_threshold` an der Validation-Stage; WebAuthn, Static Tokens, Duo, SMS, E-Mail
+  als zweiter Faktor und das `amr` dafür. (`not_configured_action: deny|configure` ist
+  inzwischen beobachtet, siehe 6.2 und 8.3.)
 - Explicit-Consent-Flow (`default-provider-authorization-explicit-consent`) per Executor,
   PKCE (`code_challenge`), `response_mode=form_post`, `id_token_hint` und
   `post_logout_redirect_uri` am End-Session-Endpunkt, Backchannel-Logout.
