@@ -1,0 +1,167 @@
+package WWW::Authentik::Diff;
+
+# ABSTRACT: Compare an authentik representation with the wanted state, without I/O
+
+use strict;
+use warnings;
+use Scalar::Util qw( blessed );
+use JSON::MaybeXS;
+
+our $VERSION = '0.001';
+
+=synopsis
+
+    my $changes = WWW::Authentik::Diff->changes( $current, { name => 'probe', attributes => { a => 'b' } } );
+    return unless %$changes;                        # nothing to do
+    my $full = WWW::Authentik::Diff->merge( $current, $wanted );
+
+=description
+
+The comparison behind every C<ensure_*> method of L<WWW::Authentik::API>, kept
+free of I/O so that L<Net::Async::Authentik> uses the very same code.
+
+Only the keys of the wanted state are looked at. Hashes are compared key by
+key, so a wanted C<attributes> hash with one entry checks that entry and leaves
+the others alone; a nested hash that differs comes back merged, because
+authentik replaces such a hash as a whole.
+
+Every list is compared as a multiset: authentik hands C<property_mappings>
+back in its own order, and in none of the lists this client writes does the
+order carry meaning. Lists of hashes are compared the same way, each element
+as canonical JSON.
+
+Some fields come back with values authentik filled in. L</list_defaults> names
+them, and L</with_defaults> lays them over the wanted value before the
+comparison, so that writing a C<redirect_uris> entry without
+C<redirect_uri_type> does not report a change on every run.
+
+Booleans compare equal whatever their spelling: C<\1>, a JSON true, C<"true">
+and C<1> are the same value, and so are C<\0>, a JSON false, C<"false"> and
+C<0>. Everything else is compared as a string, so C<3600> and C<"3600"> are
+equal.
+
+=cut
+
+my $JSON = JSON::MaybeXS->new( canonical => 1, allow_nonref => 1, convert_blessed => 1 );
+
+sub list_defaults {
+  return { redirect_uris => { redirect_uri_type => 'authorization' } };
+}
+
+=method list_defaults
+
+    my $defaults = WWW::Authentik::Diff->list_defaults;
+
+The fields where authentik fills a value into every element of a list, as a
+hash of field name to the defaults for one element. Override it in a subclass
+when a later authentik version adds another.
+
+=cut
+
+sub with_defaults {
+  my ( $self, $key, $value ) = @_;
+  my $defaults = $self->list_defaults->{$key};
+  return $value unless $defaults && ref $value eq 'ARRAY';
+  return [ map { ref $_ eq 'HASH' ? { %$defaults, %$_ } : $_ } @$value ];
+}
+
+=method with_defaults
+
+    my $wanted = WWW::Authentik::Diff->with_defaults( redirect_uris => \@uris );
+
+The value with L</list_defaults> laid under every element, so it can be
+compared with what authentik stored. Anything that is not a list of hashes
+comes back unchanged.
+
+=cut
+
+sub changes {
+  my ( $self, $current, $wanted ) = @_;
+  $current = {} unless ref $current eq 'HASH';
+  my %changes;
+  for my $key ( keys %$wanted ) {
+    my ( $have, $want ) = ( $current->{$key}, $self->with_defaults( $key, $wanted->{$key} ) );
+    if ( ref $want eq 'HASH' ) {
+      my $inner = $self->changes( ref $have eq 'HASH' ? $have : {}, $want );
+      $changes{$key} = $self->merge( ref $have eq 'HASH' ? $have : {}, $want ) if %$inner;
+      next;
+    }
+    $changes{$key} = $wanted->{$key} unless $self->same( $have, $want );
+  }
+  return \%changes;
+}
+
+=method changes
+
+    my $changes = WWW::Authentik::Diff->changes( \%current, \%wanted );
+
+The keys that have to be written to turn the current state into the wanted
+one, as a hash. A nested hash that differs comes back merged with its current
+content. The values are the ones that were asked for, not the ones the
+defaults were laid under. Empty when there is nothing to do.
+
+=cut
+
+sub merge {
+  my ( $self, $current, $wanted ) = @_;
+  my %merged = %{ $current || {} };
+  for my $key ( keys %$wanted ) {
+    $merged{$key} = ref $wanted->{$key} eq 'HASH' && ref $merged{$key} eq 'HASH'
+      ? $self->merge( $merged{$key}, $wanted->{$key} )
+      : $wanted->{$key};
+  }
+  return \%merged;
+}
+
+=method merge
+
+    my $full = WWW::Authentik::Diff->merge( \%current, \%wanted );
+
+The current state with the wanted keys laid over it, nested hashes merged key
+by key.
+
+=cut
+
+sub same {
+  my ( $self, $have, $want ) = @_;
+  return 1 if !defined $have && !defined $want;
+  return 0 if !defined $have || !defined $want;
+  my ( $have_bool, $want_bool ) = ( $self->_bool($have), $self->_bool($want) );
+  return $have_bool eq $want_bool ? 1 : 0 if defined $have_bool && defined $want_bool
+    && ( $self->_is_bool($have) || $self->_is_bool($want) );
+  if ( ref $have eq 'ARRAY' && ref $want eq 'ARRAY' ) {
+    return 0 unless @$have == @$want;
+    return $JSON->encode( [ sort map { $JSON->encode($_) } @$have ] )
+        eq $JSON->encode( [ sort map { $JSON->encode($_) } @$want ] ) ? 1 : 0;
+  }
+  return $JSON->encode($have) eq $JSON->encode($want) ? 1 : 0 if ref $have || ref $want;
+  return "$have" eq "$want" ? 1 : 0;
+}
+
+=method same
+
+    WWW::Authentik::Diff->same( $a, $b )
+
+True when two values are the same in the sense described above.
+
+=cut
+
+sub _is_bool {
+  my ( $self, $value ) = @_;
+  return 1 if ref $value eq 'SCALAR' || ( blessed $value && $value->isa('JSON::PP::Boolean') );
+  return 1 if JSON::MaybeXS::is_bool($value);
+  return 1 if !ref $value && ( $value eq 'true' || $value eq 'false' );
+  return 0;
+}
+
+sub _bool {
+  my ( $self, $value ) = @_;
+  return ${$value} ? 1 : 0 if ref $value eq 'SCALAR';
+  return $value ? 1 : 0 if JSON::MaybeXS::is_bool($value);
+  return if ref $value;
+  return 1 if $value eq 'true' || $value eq '1';
+  return 0 if $value eq 'false' || $value eq '0' || $value eq '';
+  return;
+}
+
+1;
