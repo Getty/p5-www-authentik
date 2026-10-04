@@ -110,6 +110,11 @@ How many objects a C<list_*> asks for per request. Default 100.
 
 =cut
 
+# what counts as an identifier rather than a readable name, per field; see
+# resolvable_fields below
+my $UUID    = qr{\A[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\z};
+my $INTEGER = qr{\A[0-9]+\z};
+
 sub diff_class { 'WWW::Authentik::Diff' }
 
 =method diff_class
@@ -689,7 +694,21 @@ Deleting a stage deletes the bindings that point at it.
 
 ####  flow stage bindings
 
-sub list_bindings  { my ( $self, %q ) = @_; $self->_paged( '/flows/bindings/', %q ) }
+sub list_bindings {
+  my ( $self, %q ) = @_;
+  # authentik wants the flow's UUID in target and answers a slug with a field
+  # error, so flow => $slug is the readable way in
+  $q{target} = $self->_flow_pk( delete $q{flow} ) if defined $q{flow};
+  return $self->_paged( '/flows/bindings/', %q );
+}
+
+sub _flow_pk {
+  my ( $self, $flow ) = @_;
+  return $flow if $flow =~ $UUID;
+  my $found = $self->find_flow($flow)
+    or WWW::Authentik::Error::Validation->throw( message => 'no flow "'.$flow.'"' );
+  return $found->{pk};
+}
 sub get_binding    { $_[0]->_data( GET => '/flows/bindings/'.$_[0]->_esc( $_[1] ).'/' ) }
 sub create_binding { $_[0]->_data( POST => '/flows/bindings/', $_[1] ) }
 sub update_binding { $_[0]->_data( PATCH => '/flows/bindings/'.$_[0]->_esc( $_[1] ).'/', $_[2] ) }
@@ -697,9 +716,12 @@ sub delete_binding { $_[0]->_done( DELETE => '/flows/bindings/'.$_[0]->_esc( $_[
 
 =method list_bindings
 
+    my $bindings = $api->list_bindings( flow => 'my-flow' );
     my $bindings = $api->list_bindings( target => $flow->{pk} );
 
-C<target> is the flow's UUID; a slug there is a field error.
+C<flow> takes a slug or a UUID and is turned into C<target>. C<target> itself
+goes through as it is, and authentik answers a slug there with a field
+error.
 
 =method get_binding
 
@@ -779,9 +801,6 @@ moment later to see C<successful>.
 =cut
 
 ####  resolve
-
-my $UUID    = qr{\A[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\z};
-my $INTEGER = qr{\A[0-9]+\z};
 
 sub resolvable_fields {
   return {
@@ -1025,13 +1044,9 @@ sub ensure_binding {
     WWW::Authentik::Error::Validation->throw( message => 'ensure_binding needs '.$_ ) unless defined $arg{$_};
   }
   my %wanted = %arg;
-  my $flow   = delete $wanted{flow};
+  my $flow   = eval { $self->_flow_pk( delete $wanted{flow} ) }
+    or WWW::Authentik::Error::Validation->throw( message => 'ensure_binding: no flow "'.$arg{flow}.'"' );
   my $stage  = $wanted{stage};
-  unless ( $flow =~ $UUID ) {
-    my $found = $self->find_flow($flow)
-      or WWW::Authentik::Error::Validation->throw( message => 'ensure_binding: no flow "'.$flow.'"' );
-    $flow = $found->{pk};
-  }
   unless ( $stage =~ $UUID ) {
     my $found = $self->find_stage($stage)
       or WWW::Authentik::Error::Validation->throw( message => 'ensure_binding: no stage "'.$stage.'"' );

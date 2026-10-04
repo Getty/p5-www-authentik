@@ -201,7 +201,12 @@ subtest 'flows, stages and bindings' => sub {
   ok( $binding->{pk}, 'create_binding' );
   is_deeply( error_of { $api->create_binding( { target => $flow->{pk}, stage => $stage->{pk}, order => 20 } ) }->field_errors,
     { non_field_errors => ['The fields target, stage, order must make a unique set.'] }, 'target, stage and order are unique' );
-  is( scalar @{ $api->list_bindings( target => $flow->{pk} ) }, 1, 'list_bindings' );
+  is( scalar @{ $api->list_bindings( target => $flow->{pk} ) }, 1, 'list_bindings by target' );
+  # authentik wants the UUID; a slug is the readable way in
+  is( scalar @{ $api->list_bindings( flow => 'probe-flow' ) }, 1, 'list_bindings by flow slug' );
+  is( scalar @{ $api->list_bindings( flow => $flow->{pk} ) }, 1, 'and by flow UUID' );
+  isa_ok( error_of { $api->list_bindings( flow => 'no-such-flow' ) },
+    'WWW::Authentik::Error::Validation', 'an unknown flow slug' );
   is( $api->update_binding( $binding->{pk}, { order => 30 } )->{order}, 30, 'update_binding' );
   is_deeply( $api->find_flow('probe-flow')->{stages}, [ $stage->{pk} ], 'the flow lists the stage' );
 
