@@ -118,22 +118,52 @@ has ua => (
   isa => InstanceOf['LWP::UserAgent']
 );
 
-sub _build_ua {
-  # no redirects: authentik answers 302 wherever it wants a browser, and none
-  # of those may carry the API token anywhere
+sub _build_ua { $_[0]->default_ua }
+
+sub default_ua {
   return LWP::UserAgent->new(
     timeout      => 30,
     agent        => 'WWW-Authentik/'.$VERSION,
+    # no redirects: authentik answers 302 wherever it wants a browser, and
+    # none of those may carry the API token anywhere
     max_redirect => 0,
+    # authentik 2026.8.3 hangs on every second request that announces the TE
+    # connection token, which LWP does by default; see below
+    send_te      => 0,
     ssl_opts     => { verify_hostname => 1 }
   );
 }
 
 =attr ua
 
-The L<LWP::UserAgent> every part shares. The default follows no redirects,
-which matters here: authentik redirects at the authorize endpoint and between
-the stages of a flow, and those answers are read, not followed.
+The L<LWP::UserAgent> every part shares. L</default_ua> builds it.
+
+=method default_ua
+
+    my $ua = WWW::Authentik->default_ua;
+
+The user agent this client wants, for a caller who needs to build their own
+and keep the two settings that matter:
+
+=over 4
+
+=item C<< max_redirect => 0 >>
+
+authentik redirects at the authorize endpoint and between the stages of a
+flow. Those answers are read, not followed, and no redirect may carry the API
+token anywhere.
+
+=item C<< send_te => 0 >>
+
+B<An injected user agent without this will hang.> LWP announces
+C<TE: deflate,gzip;q=0.3> and C<Connection: TE, close> by default, and
+authentik 2026.8.3 answers every second request carrying the C<TE> connection
+token not at all: the call sits until the timeout, the next one is fine, the
+one after that hangs again. Observed against 2026.8.3 with plain sockets as
+well, so it is authentik's front end, not LWP. C<< send_te => 0 >> tells
+L<Net::HTTP> to leave the header out.
+
+=back
 
 =cut
 

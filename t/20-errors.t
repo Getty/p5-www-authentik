@@ -98,7 +98,7 @@ subtest 'the OAuth shape' => sub {
 
 subtest 'an empty body with a header' => sub {
   my $error = error_of { $ak->oidc->userinfo('garbage') };
-  is( $error->http_status, 401, '401' );
+  is( $error->http_status, 401, 'the status is 401' );
   ok( $error->is_unauthorized, 'is_unauthorized' );
   is( $error->oauth_error, 'invalid_token', 'the code out of the WWW-Authenticate header' );
   like( $error->api_message, qr/expired, revoked, malformed/, 'and the description out of it too' );

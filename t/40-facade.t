@@ -51,7 +51,10 @@ subtest 'the user agent' => sub {
   my $default = WWW::Authentik->new( base_url => 'https://id.example.org' )->ua;
   isa_ok( $default, 'LWP::UserAgent' );
   is( $default->max_redirect, 0, 'the default user agent follows no redirects' );
+  # authentik 2026.8.3 hangs on every second request that announces TE
+  is( $default->{send_te}, 0, 'and does not announce the TE connection token' );
   like( $default->agent, qr{\AWWW-Authentik/}, 'and says who it is' );
+  is( WWW::Authentik->default_ua->{send_te}, 0, 'default_ua builds the same thing for a caller' );
 
   my $fake = FakeAuthentik->new;
   my $ak   = WWW::Authentik->new( base_url => $fake->base, application => 'a', token => 't', ua => $fake );
