@@ -216,7 +216,7 @@ sub claims_for {
   my ( $self, %arg ) = @_;
   my $now = $self->{now}->();
   return {
-    iss       => $self->issuer_for( $arg{slug} // 'probe-app' ),
+    iss       => $arg{iss} // $self->issuer_for( $arg{slug} // 'probe-app' ),
     sub       => $arg{sub} // 'fake-subject',
     aud       => $arg{aud} // 'fake-client-id',
     exp       => $arg{exp} // $now + $self->{expires_in},
@@ -666,6 +666,7 @@ sub _issue {
   my ( $self, %arg ) = @_;
   my $claims = $self->claims_for(
     slug     => $arg{slug},
+    iss      => $arg{iss},
     aud      => $arg{client_id},
     sub      => $arg{sub} // 'fake-subject',
     username => $arg{username},
@@ -694,16 +695,19 @@ sub _token {
   my $bad = sub { $self->_oauth_error( 400, 'invalid_grant', 'The provided authorization grant or refresh token is invalid, expired, revoked, does not match the redirection URI used in the authorization request, or was issued to another client' ) };
   return $bad->() unless $allowed{$grant};
   my $slug = $self->_slug_of($provider);
+  # issuer_mode decides what goes into iss, in the token as in the discovery
+  my $iss = ( $provider->{issuer_mode} // 'per_provider' ) eq 'global'
+    ? $self->{base}.'/' : $self->issuer_for( $slug // 'probe-app' );
 
   if ( $grant eq 'client_credentials' || $grant eq 'password' ) {
     if ( defined $form->{username} ) {
       my ( $token ) = grep { ( $_->{_key} // '' ) eq ( $form->{password} // '' ) } values %{ $self->{data}{tokens} };
       return $bad->() unless $token;
-      return $self->_json( 200, $self->_issue( slug => $slug, client_id => $id, username => $form->{username},
+      return $self->_json( 200, $self->_issue( slug => $slug, iss => $iss, client_id => $id, username => $form->{username},
         sub => 'sub-'.$form->{username}, scope => $form->{scope} // 'openid' ) );
     }
     return $bad->() unless ( $provider->{client_secret} // '' ) eq ( $secret // '' );
-    return $self->_json( 200, $self->_issue( slug => $slug, client_id => $id,
+    return $self->_json( 200, $self->_issue( slug => $slug, iss => $iss, client_id => $id,
       username => 'ak-'.$provider->{name}.'-client_credentials', sub => 'sub-service-account',
       scope => $form->{scope} // 'openid' ) );
   }
@@ -711,21 +715,21 @@ sub _token {
 
   if ( $grant eq 'authorization_code' ) {
     my $code = delete $self->{oauth}{codes}{ $form->{code} // '' } or return $bad->();
-    return $self->_json( 200, $self->_issue( slug => $slug, client_id => $id, %$code ) );
+    return $self->_json( 200, $self->_issue( slug => $slug, iss => $iss, client_id => $id, %$code ) );
   }
   if ( $grant eq 'refresh_token' ) {
     my $entry = delete $self->{oauth}{refresh}{ $form->{refresh_token} // '' };
     return $bad->() unless $entry && !$entry->{revoked};
     return $self->_oauth_error( 400, 'invalid_scope', 'The requested scope is invalid, unknown, malformed, or exceeds the scope granted by the resource owner' )
       if defined $form->{scope} && $form->{scope} ne ( $entry->{scope} // '' );
-    return $self->_json( 200, $self->_issue( slug => $slug, client_id => $id, scope => $entry->{scope},
+    return $self->_json( 200, $self->_issue( slug => $slug, iss => $iss, client_id => $id, scope => $entry->{scope},
       sub => $entry->{claims}{sub}, username => $entry->{claims}{preferred_username}, amr => $entry->{claims}{amr} ) );
   }
   my $device = $self->{oauth}{devices}{ $form->{device_code} // '' } or return $bad->();
   return $self->_oauth_error( 400, 'authorization_pending', "The authorization request is still pending as the end user hasn't yet completed the user-interaction steps" )
     unless $device->{approved};
   delete $self->{oauth}{devices}{ $form->{device_code} };
-  return $self->_json( 200, $self->_issue( slug => $slug, client_id => $id, scope => $device->{scope},
+  return $self->_json( 200, $self->_issue( slug => $slug, iss => $iss, client_id => $id, scope => $device->{scope},
     username => 'probe-alice', sub => 'sub-probe-alice', amr => ['pwd'] ) );
 }
 

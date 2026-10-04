@@ -17,6 +17,11 @@ Revision history for WWW-Authentik
       authentik's four error shapes; a duplicate is 400 with a field error and
       a refused token is 403
     - The default user agent sets send_te to 0: authentik 2026.8.3 does not
-      answer every second request that announces the TE connection token
+      answer every second request that announces the TE connection token.
+      WWW::Authentik->default_ua throws on an LWP too old to take the option
+    - verify_token checks the audience, and refuses to verify without one
+      when the provider issues under a shared issuer (issuer_mode: global),
+      where nothing else separates two applications of one instance. Give
+      client_id to the client and it is checked by itself
     - Live tests against a real authentik behind AUTHENTIK_LIVE_TEST, with a
       throwaway instance in t/authentik/

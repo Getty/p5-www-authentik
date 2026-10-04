@@ -192,6 +192,15 @@ sub _find_one {
   return $found;
 }
 
+# a finder called with nothing would otherwise fetch every object and compare
+# each one against undef, warning once per row and finding nothing
+sub _need {
+  my ( $self, $what, $value ) = @_;
+  WWW::Authentik::Error::Validation->throw( message => $what.' is needed' )
+    unless defined $value && length $value;
+  return $value;
+}
+
 sub _detail {
   my ( $self, $path ) = @_;
   my $object = eval { $self->_data( GET => $path ) };
@@ -236,6 +245,7 @@ sub delete_user { $_[0]->_done( DELETE => '/core/users/'.$_[0]->_esc( $_[1] ).'/
 
 sub find_user {
   my ( $self, $username ) = @_;
+  $self->_need( 'find_user: a username', $username );
   return $self->_find_one( $self->list_users( username => $username ), 'username', $username );
 }
 
@@ -314,6 +324,7 @@ sub delete_group { $_[0]->_done( DELETE => '/core/groups/'.$_[0]->_esc( $_[1] ).
 
 sub find_group {
   my ( $self, $name ) = @_;
+  $self->_need( 'find_group: a name', $name );
   return $self->_find_one( $self->list_groups( name => $name ), 'name', $name );
 }
 
@@ -361,6 +372,7 @@ sub delete_token { $_[0]->_done( DELETE => '/core/tokens/'.$_[0]->_esc( $_[1] ).
 
 sub find_token {
   my ( $self, $identifier ) = @_;
+  $self->_need( 'find_token: an identifier', $identifier );
   return $self->_detail( '/core/tokens/'.$self->_esc($identifier).'/' );
 }
 
@@ -415,6 +427,7 @@ sub delete_application { $_[0]->_done( DELETE => '/core/applications/'.$_[0]->_e
 
 sub find_application {
   my ( $self, $slug ) = @_;
+  $self->_need( 'find_application: a slug', $slug );
   return $self->_detail( '/core/applications/'.$self->_esc($slug).'/' );
 }
 
@@ -446,7 +459,18 @@ one application.
 
 =method check_access
 
-    $api->check_access( 'my-app', for_user => $user->{pk} );
+    my $access = $api->check_access('my-app');
+    my $access = $api->check_access( 'my-app', for_user => $user->{pk} );
+
+Whether the application's policies let someone in:
+C<< { passing => 1, messages => [], log_messages => [] } >>.
+
+Without C<for_user> the answer is about the user the API token belongs to. A
+C<for_user> that no user has is a plain field error
+(C<< 400 {"for_user": "User not found"} >>), so a stale id cannot pass for an
+answer — with one exception worth knowing: C<< for_user => 1 >> is accepted
+on 2026.8.3 because primary key 1 is authentik's internal C<AnonymousUser>,
+which L</get_user> and L</list_users> both deny the existence of.
 
 =cut
 
@@ -460,6 +484,7 @@ sub delete_oauth2_provider { $_[0]->_done( DELETE => '/providers/oauth2/'.$_[0]-
 
 sub find_oauth2_provider {
   my ( $self, $name ) = @_;
+  $self->_need( 'find_oauth2_provider: a name', $name );
   return $self->_find_one( $self->list_oauth2_providers( name => $name ), 'name', $name );
 }
 
@@ -525,6 +550,7 @@ sub delete_scope_mapping { $_[0]->_done( DELETE => '/propertymappings/provider/s
 
 sub find_scope_mapping {
   my ( $self, $name ) = @_;
+  $self->_need( 'find_scope_mapping: a name', $name );
   return $self->_find_one( $self->list_scope_mappings( name => $name ), 'name', $name );
 }
 
@@ -592,6 +618,7 @@ sub delete_flow { $_[0]->_done( DELETE => '/flows/instances/'.$_[0]->_esc( $_[1]
 
 sub find_flow {
   my ( $self, $slug ) = @_;
+  $self->_need( 'find_flow: a slug', $slug );
   return $self->_detail( '/flows/instances/'.$self->_esc($slug).'/' );
 }
 
@@ -633,6 +660,7 @@ sub list_stages { my ( $self, %q ) = @_; $self->_paged( '/stages/all/', %q ) }
 
 sub find_stage {
   my ( $self, $name ) = @_;
+  $self->_need( 'find_stage: a name', $name );
   return $self->_find_one( $self->list_stages( name => $name ), 'name', $name );
 }
 
@@ -747,6 +775,7 @@ sub list_certificates { my ( $self, %q ) = @_; $self->_paged( '/crypto/certifica
 
 sub find_certificate {
   my ( $self, $name ) = @_;
+  $self->_need( 'find_certificate: a name', $name );
   return $self->_find_one( $self->list_certificates( name => $name ), 'name', $name );
 }
 
@@ -827,7 +856,14 @@ sub resolve {
     WWW::Authentik::Error::Validation->throw( message => 'give either scopes or property_mappings, not both' )
       if exists $out{property_mappings} || exists $out{property_mapping_names};
     my $scopes = delete $out{scopes};
-    $out{property_mappings} = [ map { $_->{pk} } @{ $self->find_scope_mappings_by_scope( @{ $scopes || [] } ) } ];
+    # an undef here is a mistake in the caller, and a costly one: taking it
+    # for an empty list would strip every mapping off the provider
+    WWW::Authentik::Error::Validation->throw( message => 'scopes is undef: give a list of scope names, '
+      .'or an empty list to take every mapping away' )
+      unless defined $scopes;
+    WWW::Authentik::Error::Validation->throw( message => 'scopes takes a list of scope names' )
+      unless ref $scopes eq 'ARRAY';
+    $out{property_mappings} = [ map { $_->{pk} } @{ $self->find_scope_mappings_by_scope(@$scopes) } ];
   }
   for my $field ( sort keys %$fields ) {
     my $spec   = $fields->{$field};
@@ -836,6 +872,11 @@ sub resolve {
       if $forced && exists $out{$field};
     next unless $forced || exists $out{$field};
     my $value = $forced ? delete $out{ $spec->{force} } : $out{$field};
+    # the forced form says "look this name up", so an undef there is a
+    # mistake, not a wish to leave the field alone
+    WWW::Authentik::Error::Validation->throw( message => $spec->{force}.' is undef: give a name to look up, '
+      .'or '.$field.' to set the identifier itself' )
+      if $forced && !defined $value;
     next unless defined $value;
     $out{$field} = $spec->{list}
       ? [ map { $self->_resolve_one( $field, $spec, $_, $forced ) } @{ ref $value eq 'ARRAY' ? $value : [$value] } ]
@@ -846,6 +887,9 @@ sub resolve {
 
 sub _resolve_one {
   my ( $self, $field, $spec, $value, $forced ) = @_;
+  WWW::Authentik::Error::Validation->throw( message => 'cannot set '.$field.': expected '.$spec->{what}
+    .' as a name or an identifier, got a '.lc( ref $value ).' reference' )
+    if ref $value;
   return $value if !$forced && $value =~ $spec->{raw};
   my $find  = $spec->{find};
   my $found = $self->$find($value);

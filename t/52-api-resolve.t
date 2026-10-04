@@ -84,6 +84,35 @@ subtest 'scopes' => sub {
   like( error_of { $api->resolve( { scopes => ['no-such-scope'] } ) }, qr/no scope mapping for the scope/, 'an unknown scope' );
 };
 
+subtest 'a mistake is not taken for a wish' => sub {
+  # an undef where a name belongs is a bug in the caller, and for scopes a
+  # costly one: taken as an empty list it would strip every mapping
+  my $scopes = error_of { $api->resolve( { scopes => undef } ) };
+  isa_ok( $scopes, 'WWW::Authentik::Error::Validation', 'scopes => undef' );
+  like( "$scopes", qr/take every mapping away/, 'and says what it would have done' );
+  is_deeply( $api->resolve( { scopes => [] } )->{property_mappings}, [], 'an empty list still means empty' );
+  isa_ok( error_of { $api->resolve( { scopes => 'openid' } ) }, 'WWW::Authentik::Error::Validation', 'scopes as a string' );
+
+  my $forced = error_of { $api->resolve( { provider_name => undef } ) };
+  isa_ok( $forced, 'WWW::Authentik::Error::Validation', 'provider_name => undef' );
+  like( "$forced", qr/provider_name is undef/, 'and names the key' );
+  is_deeply( $api->resolve( { provider => undef } ), { provider => undef }, 'while provider => undef still passes through' );
+
+  my $ref = error_of { $api->resolve( { user => {} } ) };
+  isa_ok( $ref, 'WWW::Authentik::Error::Validation', 'a reference where a name belongs' );
+  like( "$ref", qr/got a hash reference/, 'and says what it got' );
+  unlike( "$ref", qr/HASH\(0x/, 'without an address in the message' );
+};
+
+subtest 'a finder needs something to find' => sub {
+  # an undef key used to fetch the whole table and compare every row to undef
+  for my $finder (qw( find_user find_group find_oauth2_provider find_scope_mapping
+                      find_certificate find_stage find_application find_flow find_token )) {
+    isa_ok( error_of { $api->$finder(undef) }, 'WWW::Authentik::Error::Validation', $finder.'(undef)' );
+    isa_ok( error_of { $api->$finder('') }, 'WWW::Authentik::Error::Validation', $finder.q{('')} );
+  }
+};
+
 subtest 'everything else is left alone' => sub {
   my $rep = $api->resolve( { name => 'x', client_type => 'public', redirect_uris => [ { url => 'u' } ], provider => 7 } );
   is( $rep->{name}, 'x', 'a plain field' );

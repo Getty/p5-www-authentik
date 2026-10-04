@@ -3,7 +3,7 @@ requires 'Crypt::JWT';
 requires 'HTTP::Message';
 requires 'JSON::MaybeXS';
 requires 'LWP::Protocol::https';
-requires 'LWP::UserAgent';
+requires 'LWP::UserAgent', '6.33';
 requires 'Moo';
 requires 'Type::Tiny';
 requires 'URI';

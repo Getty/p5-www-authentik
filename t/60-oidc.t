@@ -164,6 +164,58 @@ subtest 'the device flow' => sub {
       'invalid_grant', 'the device code is used up' );
 };
 
+subtest 'two applications of one instance' => sub {
+  # every provider of an authentik signs with the same key, so the issuer is
+  # all that keeps one application's tokens out of another's verification
+  my $second = $fake->add( providers => {
+    name => 'other-provider', client_id => 'other-client', client_secret => 'other-secret',
+    authorization_flow => 'f', invalidation_flow => 'f', redirect_uris => [],
+    grant_types => ['client_credentials']
+  } );
+  $fake->add( applications => { name => 'Other App', slug => 'other-app', provider => $second->{pk} } );
+  my $other = WWW::Authentik::OIDC->new(
+    application_url => $fake->base.'/application/o/other-app', ua => $fake, now => sub { $now } );
+  my $theirs = $other->client_credentials_token( client_id => 'other-client', client_secret => 'other-secret', scope => 'openid' );
+
+  ok( $oidc->issuer_names_the_application, 'per_provider: the issuer names the application' );
+  isa_ok( error_of { $oidc->verify_token( $theirs->{access_token} ) },
+    'WWW::Authentik::Error::Validation', "another application's token" );
+
+  # issuer_mode: global makes every provider issue under the bare instance URL
+  $fake->collection('providers')->{ $provider->{pk} }{issuer_mode} = 'global';
+  $fake->collection('providers')->{ $second->{pk} }{issuer_mode}   = 'global';
+  my $global = WWW::Authentik::OIDC->new(
+    application_url => $ak->application_url, ua => $fake, now => sub { $now } );
+  my $global_other = WWW::Authentik::OIDC->new(
+    application_url => $fake->base.'/application/o/other-app', ua => $fake, now => sub { $now } );
+  is( $global->issuer, $fake->base.'/', 'global: the issuer is the bare instance' );
+  ok( !$global->issuer_names_the_application, 'and does not name the application' );
+
+  my $mine = $global->client_credentials_token( %client, scope => 'openid' );
+  my $refused = error_of { $global->verify_token( $mine->{access_token} ) };
+  isa_ok( $refused, 'WWW::Authentik::Error::Validation', 'verifying without an audience' );
+  like( "$refused", qr/does not name the application/, 'and says why it will not' );
+
+  ok( $global->verify_token( $mine->{access_token}, audience => 'probe-client' ), 'an audience makes it work' );
+  isa_ok( error_of { $global->verify_token( $mine->{access_token}, audience => 'other-client' ) },
+    'WWW::Authentik::Error::Validation', 'and a wrong one does not' );
+  ok( $global->verify_token( $mine->{access_token}, any_audience => 1 ), 'any_audience says you meant it' );
+
+  # the client_id on the client does it by itself
+  my $pinned = WWW::Authentik::OIDC->new( application_url => $ak->application_url, ua => $fake,
+    now => sub { $now }, client_id => 'probe-client' );
+  ok( $pinned->verify_token( $mine->{access_token} ), 'with client_id set, our own token passes' );
+  my $theirs_global = $global_other->client_credentials_token(
+    client_id => 'other-client', client_secret => 'other-secret', scope => 'openid' );
+  isa_ok( error_of { $pinned->verify_token( $theirs_global->{access_token} ) },
+    'WWW::Authentik::Error::Validation', "and another application's does not" );
+  is( WWW::Authentik->new( base_url => $fake->base, application => 'probe-app', client_id => 'x', ua => $fake )->oidc->client_id,
+    'x', 'the facade passes client_id through' );
+
+  $fake->collection('providers')->{ $provider->{pk} }{issuer_mode} = 'per_provider';
+  $fake->collection('providers')->{ $second->{pk} }{issuer_mode}   = 'per_provider';
+};
+
 subtest 'authorization_url' => sub {
   my $url = $oidc->authorization_url( client_id => 'probe-client', redirect_uri => 'https://app.example.org/cb',
     scope => 'openid email', state => 'st', nonce => 'n' );

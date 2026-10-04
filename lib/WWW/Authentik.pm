@@ -24,6 +24,7 @@ our $VERSION = '0.001';
     my $ak = WWW::Authentik->new(
       base_url    => 'https://id.example.org',
       application => 'my-app',                   # the application slug, for OIDC
+      client_id   => $client_id,                 # its provider's client id, checked as the audience
       token       => $ENV{AUTHENTIK_TOKEN},      # an API token, for the REST API
     );
 
@@ -113,6 +114,20 @@ renewed.
 
 =cut
 
+has client_id => (
+  is        => 'ro',
+  isa       => Str,
+  predicate => 'has_client_id'
+);
+
+=attr client_id
+
+The client id of L</application>'s provider. L<WWW::Authentik::OIDC/verify_token>
+checks it as the audience, which is what keeps a token of another application
+of the same authentik from passing. Worth setting.
+
+=cut
+
 has ua => (
   is  => 'lazy',
   isa => InstanceOf['LWP::UserAgent']
@@ -121,7 +136,8 @@ has ua => (
 sub _build_ua { $_[0]->default_ua }
 
 sub default_ua {
-  return LWP::UserAgent->new(
+  my ( $self ) = @_;
+  my $ua = LWP::UserAgent->new(
     timeout      => 30,
     agent        => 'WWW-Authentik/'.$VERSION,
     # no redirects: authentik answers 302 wherever it wants a browser, and
@@ -132,6 +148,15 @@ sub default_ua {
     send_te      => 0,
     ssl_opts     => { verify_hostname => 1 }
   );
+  # An LWP from before 6.33 does not know send_te: it only carps, and only
+  # under -w, and the caller would meet the hang in production instead. Say
+  # it here, once, loudly.
+  WWW::Authentik::Error::Validation->throw( message => 'this LWP::UserAgent ('
+    .( $LWP::UserAgent::VERSION // 'unknown version' ).') does not take send_te, so it would announce the TE '
+    .'connection token and authentik would leave every second request unanswered. libwww-perl 6.33 or newer '
+    .'is needed.' )
+    unless defined $ua->{send_te} && !$ua->{send_te};
+  return $ua;
 }
 
 =attr ua
@@ -161,7 +186,9 @@ authentik 2026.8.3 answers every second request carrying the C<TE> connection
 token not at all: the call sits until the timeout, the next one is fine, the
 one after that hangs again. Observed against 2026.8.3 with plain sockets as
 well, so it is authentik's front end, not LWP. C<< send_te => 0 >> tells
-L<Net::HTTP> to leave the header out.
+L<Net::HTTP> to leave the header out, and libwww-perl has taken the option
+since 6.33. On anything older this method throws rather than hand back a
+user agent that works every other time.
 
 =back
 
@@ -176,7 +203,11 @@ sub _build_oidc {
   my ( $self ) = @_;
   WWW::Authentik::Error::Validation->throw( message => __PACKAGE__.'->oidc needs an application slug' )
     unless $self->has_application && length $self->application;
-  return WWW::Authentik::OIDC->new( application_url => $self->application_url, ua => $self->ua );
+  return WWW::Authentik::OIDC->new(
+    application_url => $self->application_url,
+    ua              => $self->ua,
+    $self->has_client_id ? ( client_id => $self->client_id ) : ()
+  );
 }
 
 =attr oidc
@@ -260,6 +291,7 @@ sub for_application {
     application => $slug,
     ua          => $self->ua,
     $self->has_token ? ( token => $self->token ) : ()
+    # deliberately not the client_id: it belongs to this application's provider
   );
 }
 

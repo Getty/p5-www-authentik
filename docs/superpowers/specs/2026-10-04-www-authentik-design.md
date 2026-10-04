@@ -795,3 +795,40 @@ Ein Review ohne Bau-Kontext, mit Proben gegen dieselbe laufende Instanz.
   Form des gewünschten ist — nur in dieser Richtung, damit Leerraum in `attributes`, den
   authentik behält, weiter als Unterschied zählt.
 
+- **`verify_token` nahm das Token einer anderen Application an.** Alle Provider einer
+  authentik-Instanz signieren mit demselben Schlüssel, der Aussteller ist also das
+  Einzige, was zwei Applications trennt — und mit `issuer_mode: global` ist er für alle
+  die nackte Instanz-Adresse. Zwei Provider, beide auf `global`, am laufenden System:
+  das Access-Token und das ID-Token des einen wurden vom `oidc` des anderen ohne
+  `audience` angenommen. Behoben: `WWW::Authentik::OIDC` hat ein optionales `client_id`,
+  das als `audience` geprüft wird, `issuer_names_the_application` sagt, ob der Aussteller
+  die Application benennt, und `verify_token` verweigert die Prüfung, wenn er es nicht
+  tut und weder `audience` noch `client_id` noch `any_audience => 1` da ist. Mit dem
+  Standard `issuer_mode: per_provider` ändert sich nichts.
+- **Eine komprimierte Antwort ging ganz verloren.** `read_response` maß `decoded_content`,
+  dekodierte aber `content`. Mit einem eingeschleusten User-Agent, der `gzip` anfragt,
+  kam bei Status 200 `data => undef` zurück, ohne Fehler: `get_user` lieferte nichts,
+  `list_*` eine leere Liste, und `ensure_*` hätte Doppelgänger angelegt. Jetzt wird
+  `decoded_content( charset => 'none' )` dekodiert.
+- **Ein Rumpf, der nicht von authentik kommt, war stumm.** Ein Proxy oder eine falsche
+  `base_url` antwortet HTML oder Text; der Fehler trug dann nur die Statuszeile. Jetzt
+  steht ein zusammengestrichener Ausschnitt in `api_message` und der Rumpf (bis 500
+  Zeichen) in `WWW::Authentik::Error::API->body`.
+- **`scopes => undef` hätte jede Zuordnung entfernt.** Es wurde als leere Liste gelesen und
+  hätte einem vorhandenen Provider alle Property-Mappings genommen. Jetzt ein
+  Validation-Fehler, ebenso `<feld>_name => undef`, das vorher stillschweigend verfiel,
+  und eine Referenz, wo ein Name hingehört.
+- **Ein `find_*` ohne Schlüssel holte die ganze Tabelle** und verglich jede Zeile mit
+  `undef`, mit einer Warnung je Zeile. Jetzt ein Validation-Fehler.
+- **`Diff::_bool` endete in einem nackten `return`,** das im Listenkontext nichts liefert
+  und den zweiten Wert in den ersten Platz geschoben hätte. Jetzt `return undef`.
+- **`LWP::UserAgent` ist auf 6.33 festgenagelt,** die erste Version mit `send_te`. Eine
+  ältere nimmt die Option stumm nicht an (sie warnt nur unter `-w`), und der Hang aus
+  13.1 wäre zurück. `default_ua` prüft es zusätzlich zur Laufzeit.
+- **Nicht bestätigt: `check_access` ignoriere einen unbekannten `for_user`.** Der Review
+  schloss das aus `?for_user=1` → `passing: true`, obwohl `/core/users/1/` 404 gibt. Die
+  Nachprüfung zeigt etwas anderes: ein wirklich unbekannter Schlüssel ist
+  `400 {"for_user": "User not found"}`, und der Schlüssel 1 gehört authentiks internem
+  `AnonymousUser`, den die Nutzer-Endpunkte nur nicht zeigen. Beides steht jetzt in der
+  POD und in der Live-Suite.
+

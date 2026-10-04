@@ -18,6 +18,7 @@ use WWW::Authentik;
 my $ak = WWW::Authentik->new(
   base_url    => 'https://id.example.org',
   application => 'my-app',                   # the application slug, for OIDC
+  client_id   => $client_id,                 # its provider's client id, checked as the audience
   token       => $ENV{AUTHENTIK_TOKEN},      # an API token, for the REST API
 );
 ```
@@ -31,7 +32,7 @@ without a token there is no `api`.
 ```perl
 my $oidc   = $ak->oidc;
 my $tokens = $oidc->client_credentials_token( client_id => $id, client_secret => $secret, scope => 'openid' );
-my $claims = $oidc->verify_token( $tokens->{access_token}, audience => $id, type => 'access' );
+my $claims = $oidc->verify_token( $tokens->{access_token}, type => 'access' );
 
 my $start = $oidc->device_authorization( client_id => $id, scope => 'openid' );
 print $start->{verification_uri_complete};
@@ -39,9 +40,15 @@ my $done = eval { $oidc->device_token( device_code => $start->{device_code}, cli
 # $@->oauth_error eq 'authorization_pending' while nobody has approved
 ```
 
-`verify_token` checks signature, issuer, expiry and audience. `type` is a heuristic:
-authentik puts no `typ` into the JOSE header, so an access token is told from an ID token
-by its `scope` claim.
+`verify_token` checks signature, issuer and expiry, and the audience — which is what
+`client_id` above is for. **The audience is what separates two applications of one
+authentik**: every provider of an instance signs with the same key, and with
+`issuer_mode: global` they all issue under the same issuer too, so without an audience a
+token of any other application would pass. On such an instance `verify_token` refuses to
+verify without one, unless you say `any_audience => 1`.
+
+`type` is a heuristic: authentik puts no `typ` into the JOSE header, so an access token is
+told from an ID token by its `scope` claim.
 
 ### The REST API, one call at a time
 

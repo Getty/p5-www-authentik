@@ -81,13 +81,21 @@ the same arguments always produce the same request.
 
 sub read_response {
   my ( $self, $response, $method, $url, %arg ) = @_;
+  # decoded_content undoes a Content-Encoding; the raw content does not. With
+  # charset => 'none' it stops short of decoding the character set, which is
+  # what the JSON codec wants, because it decodes UTF-8 itself. Reading the
+  # raw content here would lose the whole body to any user agent that asked
+  # for gzip.
+  my $bytes   = $response->decoded_content( charset => 'none' ) // '';
   my $content = $response->decoded_content // '';
-  my $data    = length $content ? eval { $self->json_codec->decode( $response->content ) } : undef;
+  my $data    = length $bytes ? eval { $self->json_codec->decode($bytes) } : undef;
   # authentik answers 302 at the authorize endpoint and between the stages of
   # a flow; that is an answer, not a failure
   return { status => $response->code, data => $data, location => scalar $response->header('Location'), content => $content }
     if $response->code < 400;
   my ( $message, $oauth, $request_id, %fields );
+  my $body = $content;
+  $body = substr( $body, 0, 500 ).'...' if length $body > 500;
   if ( ref $data eq 'HASH' ) {
     $request_id = $data->{request_id};
     if ( defined $data->{detail} && !ref $data->{detail} ) {
@@ -107,6 +115,15 @@ sub read_response {
     ( $message ) = $challenge =~ /error_description="([^"]+)"/;
     $message = $oauth if !defined $message && defined $oauth;
   }
+  # Not every error on the way to authentik comes from authentik: a proxy, or
+  # a base_url that points somewhere else, answers HTML or plain text. Saying
+  # only "404 Not Found" would leave the reader with nothing to go on, so a
+  # squeezed snippet of whatever came back stands in.
+  if ( ( !defined $message || !length $message ) && length $body ) {
+    my $snippet = $body =~ s/\s+/ /gr =~ s/\A\s+|\s+\z//gr;
+    $snippet = substr( $snippet, 0, 200 ).'...' if length $snippet > 200;
+    $message = $snippet if length $snippet;
+  }
   $self->api_error_class->throw(
     message      => $method.' '.$url.' failed: '.$response->status_line
       .( defined $message && length $message ? ' - '.$message : '' ),
@@ -114,7 +131,8 @@ sub read_response {
     api_message  => ( defined $message && length $message ? $message : undef ),
     field_errors => \%fields,
     oauth_error  => $oauth,
-    request_id   => $request_id
+    request_id   => $request_id,
+    body         => ( length $body ? $body : undef )
   );
 }
 
@@ -123,13 +141,21 @@ sub read_response {
     my $result = $self->read_response( $response, $method, $url, %arg );
 
 Turns an L<HTTP::Response> into C<status>, the decoded C<data>, the
-C<location> header and the raw C<content>, or throws L</api_error_class> for
-any status of 400 and above. Anything below 400 is an answer, because
+C<location> header and the decoded C<content>, or throws L</api_error_class>
+for any status of 400 and above. Anything below 400 is an answer, because
 authentik redirects where it wants a browser. C<%arg> are the arguments the
 request was built with.
 
-The thrown error names only the method and the URL, never the token, the
-secret or the body.
+The body is read through L<HTTP::Response/decoded_content>, so a user agent
+that asked for a compressed answer still gets its JSON.
+
+When the body is neither of authentik's error shapes — a proxy's HTML, plain
+text, a JSON array — a squeezed snippet of it becomes the message, and the
+whole of it (up to 500 characters) is on the exception as
+L<WWW::Authentik::Error::API/body>.
+
+The thrown error names the method and the URL, never the token or the
+secret.
 
 =cut
 

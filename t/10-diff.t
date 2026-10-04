@@ -102,6 +102,16 @@ subtest 'merge' => sub {
   is_deeply( $diff->merge( undef, { a => 1 } ), { a => 1 }, 'undef current' );
 };
 
+subtest 'a non-boolean does not shift the comparison' => sub {
+  # _bool is taken twice in one list, so a bare return would slide the second
+  # value into the first slot
+  my @pair = ( $diff->_bool('neither'), $diff->_bool( \1 ) );
+  is( scalar @pair, 2, 'two values come back, even when the first is nothing' );
+  is( $pair[0], undef, 'the first is undef' );
+  is( $pair[1], 1, 'and the second is itself' );
+  is( scalar( () = $diff->_bool( {} ) ), 1, 'a reference yields one value too' );
+};
+
 subtest 'with_defaults' => sub {
   is_deeply( $diff->list_defaults->{redirect_uris}, { redirect_uri_type => 'authorization' }, 'the one default authentik adds' );
   is_deeply(

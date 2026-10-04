@@ -95,6 +95,17 @@ in authentik's log.
 
 =cut
 
+has body => ( is => 'ro' );
+
+=attr body
+
+What came back, up to 500 characters, when it was not one of the shapes
+above: a proxy's HTML, plain text, a JSON array. Undef when the body was
+empty. This is where to look when C<base_url> points at something that is not
+an authentik.
+
+=cut
+
 sub is_bad_request  { $_[0]->http_status == 400 ? 1 : 0 }
 sub is_unauthorized { $_[0]->http_status == 401 ? 1 : 0 }
 sub is_forbidden    { $_[0]->http_status == 403 ? 1 : 0 }

@@ -19,6 +19,9 @@ our $VERSION = '0.001';
     my $claims = $oidc->verify_token( $jwt, type => 'access' );
     my $tokens = $oidc->client_credentials_token( client_id => $id, client_secret => $secret, scope => 'openid' );
 
+    # give the client id once and every verify_token checks the audience
+    my $safe = WWW::Authentik->new( base_url => $url, application => 'my-app', client_id => $id )->oidc;
+
 =description
 
 The OpenID Connect side of one application: discovery, the signing keys,
@@ -63,6 +66,21 @@ has ua => (
 =attr ua
 
 Required. The L<LWP::UserAgent> to use.
+
+=cut
+
+has client_id => (
+  is        => 'ro',
+  isa       => Str,
+  predicate => 'has_client_id'
+);
+
+=attr client_id
+
+The client id of this application's provider. When it is set, L</verify_token>
+checks it as the audience unless the caller names another one. Setting it is
+the simple way to be safe on an instance whose providers issue tokens under a
+shared issuer; see L</verify_token>.
 
 =cut
 
@@ -199,19 +217,37 @@ The application's public signing keys, kept after the first fetch.
 
 =cut
 
+sub issuer_names_the_application {
+  my ( $self ) = @_;
+  return $self->issuer eq $self->application_url.'/' ? 1 : 0;
+}
+
 sub verify_token {
   my ( $self, $token, %opt ) = @_;
   WWW::Authentik::Error::Validation->throw( message => 'verify_token needs a token' )
     unless defined $token && length $token;
   WWW::Authentik::Error::Validation->throw( message => "verify_token: type must be 'access' or 'id'" )
     if defined $opt{type} && $opt{type} ne 'access' && $opt{type} ne 'id';
+  my $audience = exists $opt{audience} ? $opt{audience}
+    : $self->has_client_id            ? $self->client_id
+    :                                   undef;
+  # Every provider of one authentik signs with the same key, so the issuer is
+  # all that separates two applications - and with issuer_mode: global it is
+  # the bare instance URL, the same for all of them. Then only the audience
+  # tells them apart, and verifying without one would accept any token the
+  # instance ever issued.
+  WWW::Authentik::Error::Validation->throw( message => 'verify_token cannot tell this application apart: '
+    .'the provider issues tokens as "'.$self->issuer.'", which does not name the application, so a token '
+    .'of any other application of this authentik would pass. Give an audience, set client_id on the client, '
+    .'or say any_audience => 1 if you really mean to accept them all.' )
+    if !defined $audience && !$opt{any_audience} && !$self->issuer_names_the_application;
   my %check = (
     token          => $token,
     verify_iss     => $self->issuer,
     verify_exp     => 1,
     accepted_alg   => $self->algorithms,
     decode_payload => 1,
-    defined $opt{audience} ? ( verify_aud => $opt{audience} ) : ()
+    defined $audience ? ( verify_aud => $audience ) : ()
   );
   my $claims = eval { decode_jwt( %check, kid_keys => $self->jwks ) };
   my $error  = $@;
@@ -237,15 +273,33 @@ sub _reject {
   WWW::Authentik::Error::Validation->throw( message => 'token rejected: '.$why );
 }
 
+=method issuer_names_the_application
+
+True when the issuer out of the discovery document is this application's own
+address, which is what C<issuer_mode: per_provider> gives. False under
+C<issuer_mode: global>, where every provider of the instance issues tokens
+under the bare instance URL.
+
 =method verify_token
 
     my $claims = $oidc->verify_token( $jwt );
     my $claims = $oidc->verify_token( $jwt, audience => $client_id, type => 'access' );
 
-Checks signature, issuer and expiry, and the audience when one is given.
-Returns the claims, or throws a L<WWW::Authentik::Error::Validation> saying
-why the token was rejected. When the signing key is unknown the keys are
-fetched again, at most once per L</jwks_min_age>.
+Checks signature, issuer and expiry, and the audience. Returns the claims, or
+throws a L<WWW::Authentik::Error::Validation> saying why the token was
+rejected. When the signing key is unknown the keys are fetched again, at most
+once per L</jwks_min_age>.
+
+B<The audience is what separates two applications of one authentik.> Every
+provider of an instance signs with the same key, so the issuer is the only
+other thing that could tell them apart — and with C<issuer_mode: global> the
+issuer is the bare instance URL, the same for all of them. Verifying without
+an audience on such an instance would accept any token it ever issued, so
+this method refuses to do it: give C<audience>, set L</client_id> on the
+client so it is used by itself, or pass C<< any_audience => 1 >> to say that
+accepting every application of this authentik is what you meant. Under the
+default C<issuer_mode: per_provider> the issuer already names the
+application, and an audience is then optional.
 
 C<type> is a B<heuristic>, and a weak one. authentik signs ID tokens and
 access tokens the same way and puts no C<typ> into the JOSE header: both are

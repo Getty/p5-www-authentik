@@ -4,6 +4,7 @@ use warnings;
 use Test::More;
 use lib 't/lib';
 
+use HTTP::Response;
 use LWP::UserAgent;
 use FakeAuthentik;
 use WWW::Authentik;
@@ -102,6 +103,52 @@ subtest 'an empty body with a header' => sub {
   ok( $error->is_unauthorized, 'is_unauthorized' );
   is( $error->oauth_error, 'invalid_token', 'the code out of the WWW-Authenticate header' );
   like( $error->api_message, qr/expired, revoked, malformed/, 'and the description out of it too' );
+};
+
+subtest 'a body that did not come from authentik' => sub {
+  # a proxy, or a base_url pointing somewhere else, answers HTML or text, and
+  # saying only "404 Not Found" would leave the reader with nothing
+  my $reader = FakeAuthentik->new;
+  my $probe  = WWW::Authentik::API->new( base_url => 'http://x', token => 't', ua => $reader );
+
+  my %shapes = (
+    'an HTML page'  => [ 'text/html', '<html><head><title>502 Bad Gateway</title></head><body>nginx</body></html>' ],
+    'plain text'    => [ 'text/plain', "upstream timed out\n" ],
+    'a JSON array'  => [ 'application/json', '["one","two"]' ]
+  );
+  for my $why ( sort keys %shapes ) {
+    my ( $type, $content ) = @{ $shapes{$why} };
+    my $response = HTTP::Response->new( 502, 'Bad Gateway', [ 'Content-Type' => $type ], $content );
+    my $error = error_of { $probe->read_response( $response, GET => 'http://x/api/v3/core/users/' ) };
+    isa_ok( $error, 'WWW::Authentik::Error::API', $why );
+    ok( defined $error->api_message && length $error->api_message, $why.': says something' );
+    like( $error->body, qr/\Q$content\E/, $why.': and keeps the body' );
+  }
+
+  my $long = HTTP::Response->new( 500, 'Server Error', [ 'Content-Type' => 'text/plain' ], 'x' x 2000 );
+  my $cut  = error_of { $probe->read_response( $long, GET => 'http://x/' ) };
+  cmp_ok( length $cut->body, '<', 600, 'a long body is cut down' );
+  cmp_ok( length $cut->api_message, '<', 250, 'and the message more so' );
+
+  my $empty = HTTP::Response->new( 500, 'Server Error', [], '' );
+  is( error_of { $probe->read_response( $empty, GET => 'http://x/' ) }->body, undef, 'an empty body stays undef' );
+};
+
+subtest 'a compressed answer' => sub {
+  # decoded_content undoes the Content-Encoding, the raw content does not;
+  # reading the raw one would lose the whole body to any user agent that
+  # asked for gzip
+  SKIP: {
+    eval { require IO::Compress::Gzip; 1 } or skip 'IO::Compress::Gzip is not here', 2;
+    my $json = '{"pk":7,"username":"alice"}';
+    IO::Compress::Gzip::gzip( \$json => \my $gzipped );
+    my $response = HTTP::Response->new( 200, 'OK',
+      [ 'Content-Type' => 'application/json', 'Content-Encoding' => 'gzip' ], $gzipped );
+    my $probe  = WWW::Authentik::API->new( base_url => 'http://x', token => 't', ua => FakeAuthentik->new );
+    my $result = $probe->read_response( $response, GET => 'http://x/api/v3/core/users/7/' );
+    is( $result->{data}{username}, 'alice', 'the body survives gzip' );
+    is( $result->{content}, $json, 'and content is the decoded one' );
+  }
 };
 
 subtest 'no answer at all' => sub {

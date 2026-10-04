@@ -176,6 +176,26 @@ subtest 'OIDC' => sub {
   ok( $oidc->verify_token( $tokens->{id_token}, type => 'id' ), 'and the ID token' );
   like( error_of { $oidc->verify_token( $tokens->{id_token}, type => 'access' ) }, qr/no scope claim/,
     'an ID token is not an access token' );
+  isa_ok( error_of { $oidc->verify_token( $tokens->{access_token}, audience => 'somebody-else' ) },
+    'WWW::Authentik::Error::Validation', 'a wrong audience' );
+
+  # every provider of one authentik signs with the same key, so with
+  # issuer_mode: global the audience is all that separates two applications
+  ok( $oidc->issuer_names_the_application, 'per_provider: the issuer names the application' );
+  $api->update_oauth2_provider( $provider->{pk}, { issuer_mode => 'global' } );
+  my $global = WWW::Authentik->new( base_url => $ENV{AUTHENTIK_URL}, application => $prefix )->oidc;
+  is( $global->issuer, $ENV{AUTHENTIK_URL}.'/', 'global: the issuer is the bare instance' );
+  ok( !$global->issuer_names_the_application, 'and does not name the application' );
+  my $wide = $global->client_credentials_token( %client, scope => 'openid' );
+  my $refused = error_of { $global->verify_token( $wide->{access_token} ) };
+  isa_ok( $refused, 'WWW::Authentik::Error::Validation', 'verifying without an audience' );
+  like( "$refused", qr/does not name the application/, 'and says why' );
+  ok( $global->verify_token( $wide->{access_token}, audience => $client{client_id} ), 'an audience makes it work' );
+  ok( $global->verify_token( $wide->{access_token}, any_audience => 1 ), 'and any_audience says you meant it' );
+  my $pinned = WWW::Authentik->new( base_url => $ENV{AUTHENTIK_URL}, application => $prefix,
+    client_id => $client{client_id} )->oidc;
+  ok( $pinned->verify_token( $wide->{access_token} ), 'client_id on the client does it by itself' );
+  $api->update_oauth2_provider( $provider->{pk}, { issuer_mode => 'per_provider' } );
 
   ok( $oidc->userinfo( $tokens->{access_token} )->{sub}, 'userinfo' );
   ok( $oidc->introspect( $tokens->{access_token}, %client )->{active}, 'introspect says active' );
@@ -229,6 +249,24 @@ subtest 'a login and the second factor' => sub {
   my $denied = AuthentikExecutor->new( base_url => $ENV{AUTHENTIK_URL} );
   my $failed = error_of { $denied->login( username => $prefix, password => 'the-wrong-password' ) };
   ok( $failed, 'a wrong password does not get in' );
+};
+
+subtest 'check_access' => sub {
+  my $mine = $api->check_access($prefix);
+  ok( exists $mine->{passing}, 'check_access answers for the token owner' );
+  ok( exists $api->check_access( $prefix, for_user => $user->{pk} )->{passing}, 'and for a named user' );
+
+  # a stale id cannot pass for an answer
+  my $stale = error_of { $api->check_access( $prefix, for_user => 999_999 ) };
+  isa_ok( $stale, 'WWW::Authentik::Error::API', 'a user that does not exist' );
+  is( $stale->http_status, 400, 'is a field error' );
+  is_deeply( $stale->field_errors, { for_user => ['User not found'] },
+    'whose value authentik sends as a bare string, not a list' );
+
+  # except for primary key 1, which is authentik's internal AnonymousUser:
+  # check_access takes it although the user endpoints deny it exists
+  ok( exists $api->check_access( $prefix, for_user => 1 )->{passing}, 'primary key 1 is accepted' );
+  ok( error_of { $api->get_user(1) }->is_not_found, 'while get_user says there is no user 1' );
 };
 
 subtest 'clean up' => sub {
