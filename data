@@ -1,0 +1,17 @@
+---
+claimed_at: 2026-10-04T07:10:42Z
+claimed_by: frank-auth
+class: standard
+created: 2026-10-04T04:48:55Z
+depends_on:
+- 1
+id: 2
+priority: high
+started: 2026-10-04T05:33:41Z
+status: review
+title: 'Phase 1: facade, errors, HTTP role, Diff, Admin with ensure_*, OIDC, unit
+  tests, live suite'
+updated: 2026-10-04T07:10:42Z
+---
+
+Scope and order come from the approved spec and its plan.
