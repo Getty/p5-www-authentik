@@ -6,17 +6,18 @@ description: Use when working on WWW::Authentik — the synchronous Perl client 
 # WWW::Authentik core
 
 Synchronous Perl client for authentik, a structural sibling of `WWW::Keycloak`
-(`~/dev/p5-www-keycloak`). **Skeleton state: nothing is implemented yet.** The design is
-written to `docs/superpowers/specs/`; once it exists it overrides the planned map below.
+(`~/dev/p5-www-keycloak`). **Skeleton state: nothing is implemented yet.** The approved design is
+`docs/superpowers/specs/2026-10-04-www-authentik-design.md`; where it and the map below
+disagree, the design wins.
 
 ## Planned module map
 
 - `WWW::Authentik` — facade: `base_url`, optional `application` (slug), optional API
-  token; lazy `oidc` and `admin` sub-clients sharing one `LWP::UserAgent` (injectable via
+  token; lazy `oidc` and `api` sub-clients sharing one `LWP::UserAgent` (injectable via
   `ua`).
 - `WWW::Authentik::OIDC` — discovery, JWKS, token verification, userinfo, introspection,
   token endpoint helpers, device authorization endpoint.
-- `WWW::Authentik::Admin` — REST API v3 with direct methods (`list_users`,
+- `WWW::Authentik::API` — REST API v3 with direct methods (`list_users`,
   `create_application`) and repeatable `ensure_*` methods; no nested sub-client objects.
 - `WWW::Authentik::Diff` — compare a current object with the wanted state, without I/O.
 - `WWW::Authentik::Role::HTTP` — `build_request` and `read_response` split from sending,

@@ -1,7 +1,7 @@
 # WWW::Authentik – Design
 
 Datum: 2026-10-04
-Status: Entwurf, wartet auf Freigabe; die Entscheidungen in Abschnitt 11 sind offen und mit Vorschlag versehen.
+Status: freigegeben am 2026-10-04; die Entscheidungen aus Abschnitt 11 sind getroffen.
 Distribution: `WWW-Authentik` (Repo `p5-www-authentik`), CPAN-fähig, `[@Author::GETTY]`
 Zwilling: `Net-Async-Authentik` (Repo `p5-net-async-authentik`), folgt diesem Design mit `_f`-Methoden.
 Vorbild: `WWW-Keycloak` (`docs/superpowers/specs/2026-10-02-www-keycloak-design.md` dort); Form und Namen folgen ihm, der Code wird kopiert und angepasst, nicht geteilt.
@@ -610,9 +610,7 @@ Abhängigkeiten: `Moo`, `LWP::UserAgent`, `HTTP::Message`, `JSON::MaybeXS`, `Cry
 `URI`, `Type::Tiny`, `namespace::autoclean`; HTTPS über `LWP::Protocol::https`. Nichts aus
 `WWW-Keycloak`.
 
-## 11. Offene Entscheidungen
-
-Jeweils mit Vorschlag; die Spec oben ist so geschrieben, als wären die Vorschläge angenommen.
+## 11. Entscheidungen (getroffen 2026-10-04, jeweils wie vorgeschlagen)
 
 1. **Name des API-Subclients: `api` oder `admin`?** authentik nennt es „API“; es gibt keine
    getrennte Admin-API, derselbe Endpunkt dient Selbstbedienung und Verwaltung, das Token
@@ -664,7 +662,7 @@ Jeweils mit Vorschlag; die Spec oben ist so geschrieben, als wären die Vorschl�
 8. **Wie wird die Testinstanz bereitgestellt?** `t/authentik/docker-compose.yml` ist das
    Compose-File der Wegwerf-Instanz (Ports an `127.0.0.1`, kein Docker-Socket, kein Root im
    Worker, Image festgenagelt), `t/authentik/env.example` die Variablen. Ein Entwickler kopiert
-   `env.example` nach `.env`, füllt die drei Geheimnisse, `docker compose up -d`, wartet auf
+   `env.example` nach `.env`, füllt die vier Geheimnisse, `docker compose up -d`, wartet auf
    `/-/health/ready/` (hier 115 s) und setzt `AUTHENTIK_URL=http://127.0.0.1:9000
    AUTHENTIK_TOKEN=<Bootstrap-Token>`. Für CI: ein eigener Job `live` in
    `.github/workflows/ci.yml`, der dasselbe Compose-File mit erzeugten Geheimnissen startet,
@@ -675,3 +673,19 @@ Jeweils mit Vorschlag; die Spec oben ist so geschrieben, als wären die Vorschl�
    TOTP über den Setup-Flow ein (8.3), was ohnehin der Weg eines echten Nutzers ist.
    **Vorschlag:** keinen Workaround in der Dist, den Fehler upstream melden (ohne eigene
    Initiative hier; das ist Gettys Entscheidung).
+
+## 12. Aus dem Review bei der Freigabe (2026-10-04)
+
+Für den Plan; wo diese Punkte dem Text oben widersprechen oder ihn schärfen, gelten sie.
+
+- **Rückgabeform weicht bewusst von Keycloak ab.** `ensure_*` liefert `{ object, changed }`
+  statt `{ id, changed }`, und `create_*`/`update_*` liefern die Repräsentation statt der ID.
+  Der Grund steht in 5.2; die POD der Fassade nennt den Unterschied für Umsteiger.
+- **Die Namensauflösung darf nicht raten.** „Kein UUID/Integer“ als Erkennung (Punkt 6)
+  verwechselt einen Provider namens `123` mit einem PK. Der Plan legt je Feld fest, welche
+  Form als rohe Kennung gilt, und testet den Fall eines Namens, der wie eine Kennung aussieht.
+- **`verify_token( type => ... )` ist eine Heuristik** (Claim `scope`, Abschnitt 6.1) und wird
+  in der POD so benannt; ohne `type` wird die Tokenart nicht geprüft.
+- **Erzwungenes TOTP ist vor dem Bau zu beobachten.** `not_configured_action: deny` an der
+  Validation-Stage (6.2, 8.4) ist der Fall, den Airlock braucht: Login ohne eingerichtetes
+  TOTP, Antwort des Executors, und `amr` nach dem Login mit TOTP.

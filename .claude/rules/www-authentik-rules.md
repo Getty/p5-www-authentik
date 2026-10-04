@@ -12,7 +12,7 @@ speed on non-trivial work; use judgment on trivial tasks. Loaded automatically a
 3. **Surgical changes** — touch only what you must; match existing style.
 4. **Tests verify intent, not just behavior** — reproduce a bug before fixing it; leave a
    regression test behind. A test that can't fail when the logic changes is wrong.
-5. **Read before you write** — before new code, read the callers and the sibling module (`WWW::Authentik::OIDC` ↔ `WWW::Authentik::Admin`).
+5. **Read before you write** — before new code, read the callers and the sibling module (`WWW::Authentik::OIDC` ↔ `WWW::Authentik::API`).
 6. **Surface conflicts, don't average them** — pick one pattern, explain why, flag the
    other for cleanup.
 7. **Checkpoint after every significant step** — done / verified / left.
@@ -38,7 +38,7 @@ This rule depends on whether the Agent/Task tool is available to you.
 - **You cannot spawn subagents** (you ARE a `www-authentik-*` agent): the delegation lock
   does not apply to you — implement, refactor, debug, and test per these rules.
 
-Behavior-relevant = runtime behavior, the public API (`WWW::Authentik`, `::OIDC`, `::Admin`), the sync/async sibling invariant, error handling, tests, performance.
+Behavior-relevant = runtime behavior, the public API (`WWW::Authentik`, `::OIDC`, `::API`), the sync/async sibling invariant, error handling, tests, performance.
 Pure prose docs and `Changes` notes are not.
 
 **Only `www-authentik-release-manager` commits.** A worker leaves a commit-ready tree and hands its card
@@ -80,7 +80,7 @@ says to handle a specific issue.
 - **Live tests hit a real Authentik.** Opt-in via `AUTHENTIK_LIVE_TEST=1 AUTHENTIK_URL=…`, off by
   default. Never run them uncontrolled, and never enable them in a fanned-out/parallel
   context. A default `prove -lr t` must pass with them skipped.
-- **Admin calls change a real identity system.** Application, provider, flow and user mutations are
+- **API calls change a real identity system.** Application, provider, flow and user mutations are
   not test fixtures on a shared instance; live tests create and remove their own throwaway objects.
 - **Sync/async twin.** `p5-net-async-authentik` mirrors this repo's public API with `_f`
   suffixes and Futures. An API change here is incomplete until the twin matches — ticket
