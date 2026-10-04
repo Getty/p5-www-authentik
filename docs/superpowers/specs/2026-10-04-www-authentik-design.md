@@ -771,3 +771,27 @@ widersprechen, gelten sie.
   durch und meldete etwas Unverständliches; es wirft jetzt einen Validation-Fehler, der sagt,
   welchem Typ der Name wirklich gehört. Das nachgebaute authentik lieferte die Stage auch
   über den falschen Typ aus und verbarg den Fall — es filtert jetzt nach Typ.
+
+### 13.2 Vom unabhängigen Review gefunden
+
+Ein Review ohne Bau-Kontext, mit Proben gegen dieselbe laufende Instanz.
+
+- **authentik schneidet jedes Textfeld zu, und `ensure_*` konvergierte dadurch nicht.**
+  Jedes `CharField` und `TextField` wird beim Speichern an beiden Enden von Leerraum
+  befreit (DRF mit `trim_whitespace`), beobachtet an `name`, `email`, `slug`,
+  `meta_description` und `expression`:
+
+  | geschickt | gespeichert |
+  |---|---|
+  | `{"name":"  padded both  "}` | `"padded both"` |
+  | `{"expression":"return {}\n"}` | `"return {}"` |
+  | `{"meta_description":"two lines\n"}` | `"two lines"` |
+  | `{"attributes":{"padded":"  keep me  "}}` | `{"padded":"  keep me  "}` — **nicht** zugeschnitten |
+
+  Ein gewünschter Wert mit Leerraum am Rand war damit nie erreichbar: `ensure_*` meldete
+  bei jedem Lauf `updated` und schrieb jedes Mal. Dreimal hintereinander beobachtet an
+  `ensure_scope_mapping` mit einem Ausdruck, der auf `\n` endet. `WWW::Authentik::Diff`
+  nimmt jetzt einen gespeicherten Wert als gleich an, wenn er genau die zugeschnittene
+  Form des gewünschten ist — nur in dieser Richtung, damit Leerraum in `attributes`, den
+  authentik behält, weiter als Unterschied zählt.
+
