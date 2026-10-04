@@ -6,11 +6,12 @@ description: Use when working on WWW::Authentik — the synchronous Perl client 
 # WWW::Authentik core
 
 Synchronous Perl client for authentik, a structural sibling of `WWW::Keycloak`
-(`~/dev/p5-www-keycloak`). **Skeleton state: nothing is implemented yet.** The approved design is
-`docs/superpowers/specs/2026-10-04-www-authentik-design.md`; where it and the map below
-disagree, the design wins.
+(`~/dev/p5-www-keycloak`). **Phase 1 is built** against authentik 2026.8.3. The approved
+design is `docs/superpowers/specs/2026-10-04-www-authentik-design.md` and the plan is
+`docs/superpowers/plans/2026-10-04-www-authentik-phase-1.md`; where they and the map below
+disagree, the design wins. Phase 2 and 3 are in section 10 of the design.
 
-## Planned module map
+## Module map
 
 - `WWW::Authentik` — facade: `base_url`, optional `application` (slug), optional API
   token; lazy `oidc` and `api` sub-clients sharing one `LWP::UserAgent` (injectable via
@@ -19,17 +20,27 @@ disagree, the design wins.
   token endpoint helpers, device authorization endpoint.
 - `WWW::Authentik::API` — REST API v3 with direct methods (`list_users`,
   `create_application`) and repeatable `ensure_*` methods; no nested sub-client objects.
+  `list_*` follows authentik's pagination. `resolve` turns names into identifiers, one
+  fixed shape per field, with `<field>_name` / `<field>_slug` to force the lookup.
 - `WWW::Authentik::Diff` — compare a current object with the wanted state, without I/O.
 - `WWW::Authentik::Role::HTTP` — `build_request` and `read_response` split from sending,
   so the async twin reuses them.
 - `WWW::Authentik::Error` — base; `::Validation`, `::Network`, `::API` (with
-  `http_status`, `api_message`), one package per file.
+  `http_status`, `api_message`, `field_errors`, `oauth_error`, `request_id`), one package
+  per file.
 
 ## Invariants
 
 - **Shape follows `WWW::Keycloak`, the code is its own.** OIDC, Diff and the HTTP role
   are copied and adapted, not shared: this dist does not depend on `WWW::Keycloak`
-  (decided 2026-10-04).
+  (decided 2026-10-04). Two returns differ on purpose: `create_*`/`update_*` give back the
+  representation, and `ensure_*` gives back `{ object, changed }`.
+- **A duplicate is 400 with a field error, not 409; a refused token is 403, not 401.**
+  There is no `is_conflict`.
+- **The user agent must not announce TE.** authentik 2026.8.3 leaves every second such
+  request unanswered; `WWW::Authentik->default_ua` sets `send_te => 0`.
+- **authentik refuses a TOTP code twice.** A second login inside the same 30 second window
+  fails; the test helper waits for the next one.
 - **Sync/async twin.** `Net::Async::Authentik` (`~/dev/p5-net-async-authentik`) mirrors the
   public API with `_f` suffixes returning Futures. This repo leads; an API change here is
   incomplete until the twin has a ticket for it.
