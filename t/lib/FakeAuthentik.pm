@@ -428,7 +428,10 @@ sub _detail {
   my $field  = $spec->{detail};
   my ( $object ) = grep { defined $_->{$field} && $_->{$field} eq $id } values %{ $self->{data}{$name} };
   return $self->_missing( $spec->{model} ) unless $object;
-  return $self->_json( 200, $object ) if $method eq 'GET';
+  if ( $method eq 'GET' ) {
+    $self->_shape( $name, $object );
+    return $self->_json( 200, $object );
+  }
   if ( $method eq 'DELETE' ) {
     delete $self->{data}{$name}{ $object->{ $self->_pk_field($name) } };
     return $self->_empty(204);
@@ -530,6 +533,7 @@ sub _list {
   for my $field ( keys %filter ) {
     $items = [ grep { defined $_->{$field} && !ref $_->{$field} && $_->{$field} eq $filter{$field} } @$items ];
   }
+  $self->_shape( $name, $_ ) for @$items;
   my $pk_field = $self->_pk_field($name);
   my @sorted = sort { ( $a->{$pk_field} // '' ) cmp ( $b->{$pk_field} // '' ) } @$items;
   my $count  = scalar @sorted;
@@ -543,7 +547,7 @@ sub _list {
   $next = 1 if $self->{break_paging};
   # /stages/all/ answers with a reduced representation, without the typed fields
   my @results = $reduced
-    ? map { my $s = $_; { map { $_ => $s->{$_} } grep { /\A(pk|name|component|verbose_name|meta_model_name)\z/ } keys %$s } } @page
+    ? map { my $s = $_; +{ map { ( $_ => $s->{$_} ) } grep { /\A(pk|name|component|verbose_name|meta_model_name)\z/ } keys %$s } } @page
     : @page;
   return $self->_json( 200, {
     pagination => { next => $next, previous => $page > 1 ? $page - 1 : 0, count => $count,
