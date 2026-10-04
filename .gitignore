@@ -35,3 +35,6 @@ config.yml
 # skilletor: committe Config + Ignore-Block
 !.claude/skilletor.json
 !.claude/.gitignore
+
+# authentik test instance secrets
+.env
