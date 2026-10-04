@@ -12,7 +12,7 @@ use WWW::Authentik::Error;
 use WWW::Authentik::Error::Validation;
 use namespace::autoclean;
 
-our $VERSION = '0.001';
+our $VERSION = '0.002';
 
 =synopsis
 

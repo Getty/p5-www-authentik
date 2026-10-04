@@ -5,7 +5,7 @@ package WWW::Authentik::Error::API;
 use Moo;
 extends 'WWW::Authentik::Error';
 
-our $VERSION = '0.001';
+our $VERSION = '0.002';
 
 =description
 
