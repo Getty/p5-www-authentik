@@ -40,6 +40,14 @@ and C<1> are the same value, and so are C<\0>, a JSON false, C<"false"> and
 C<0>. Everything else is compared as a string, so C<3600> and C<"3600"> are
 equal.
 
+One asymmetry: authentik trims leading and trailing whitespace off every text
+field it stores, so a wanted C<"two lines\n"> comes back as C<"two lines">.
+Such a value could never be reached and C<ensure_*> would report a change for
+ever, so a stored value that is exactly the trimmed form of the wanted one
+counts as equal. The comparison runs in that direction only: a stored value
+with whitespace against a wanted one without it is still a difference, which
+is what happens inside C<attributes>, where authentik keeps whitespace.
+
 =cut
 
 my $JSON = JSON::MaybeXS->new( canonical => 1, allow_nonref => 1, convert_blessed => 1 );
@@ -135,7 +143,15 @@ sub same {
         eq $JSON->encode( [ sort map { $JSON->encode($_) } @$want ] ) ? 1 : 0;
   }
   return $JSON->encode($have) eq $JSON->encode($want) ? 1 : 0 if ref $have || ref $want;
-  return "$have" eq "$want" ? 1 : 0;
+  return 1 if "$have" eq "$want";
+  # authentik trims leading and trailing whitespace off every text field, so a
+  # wanted value that carries any can never be reached and would report a
+  # change on every run. Only this one direction counts as equal: what is
+  # stored is exactly the trimmed form of what was asked for. Values inside
+  # `attributes` keep their whitespace, and there a difference is still a
+  # difference.
+  return 1 if "$have" eq ( "$want" =~ s/\A\s+//r =~ s/\s+\z//r );
+  return 0;
 }
 
 =method same

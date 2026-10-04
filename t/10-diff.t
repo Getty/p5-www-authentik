@@ -36,6 +36,15 @@ subtest 'same' => sub {
   ok( $diff->same( [ { a => 1, b => 2 } ], [ { b => 2, a => 1 } ] ), 'key order inside does not matter' );
   ok( $diff->same( [], [] ), 'two empty lists' );
   ok( !$diff->same( [], undef ), 'an empty list is not undef' );
+
+  # authentik trims every text field it stores, so the trimmed form of what
+  # was asked for is as close as the wanted state can get
+  ok( $diff->same( 'two lines', "two lines\n" ), 'a stored value without the trailing newline' );
+  ok( $diff->same( 'padded both', '  padded both  ' ), 'and without the padding on either side' );
+  ok( !$diff->same( "two lines\n", 'two lines' ), 'but not the other way round' );
+  ok( !$diff->same( '  keep me  ', 'keep me' ), 'so whitespace inside attributes is still a difference' );
+  ok( !$diff->same( 'a b', 'ab' ), 'and inner whitespace is never ignored' );
+  ok( $diff->same( '', '   ' ), 'an empty value against nothing but whitespace' );
 };
 
 subtest 'changes' => sub {
@@ -77,6 +86,12 @@ subtest 'changes' => sub {
     { redirect_uris => [ { matching_mode => 'strict', url => 'https://b.example.org/cb' } ] },
     'another URL is a change, and the wanted value is written as it was given'
   );
+
+  # the wanted value is written as it was given, even when the comparison
+  # accepted the trimmed form
+  is_deeply( $diff->changes( { name => 'two lines' }, { name => "two lines\n" } ), {}, 'a trimmed text field is no change' );
+  is_deeply( $diff->changes( { name => 'two lines' }, { name => "three lines\n" } ), { name => "three lines\n" },
+    'a different one is, and keeps what was asked for' );
 
   is( $current->{attributes}{dept}, 'x', 'the current state is not modified' );
 };

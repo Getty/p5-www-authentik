@@ -136,11 +136,16 @@ subtest 'objects, twice' => sub {
       user_name => $api->me->{user}{username} );
   } );
 
-  # one changed key is one write, and nothing else moves
-  my $changed = $api->ensure_application( slug => $prefix, meta_description => 'changed' );
+  # one changed key is one write, and nothing else moves. The trailing
+  # newline is the point: authentik trims every text field it stores, so a
+  # wanted value carrying one must still settle instead of reporting a change
+  # for ever.
+  my $changed = $api->ensure_application( slug => $prefix, meta_description => "changed\n" );
   is( $changed->{changed}, 'updated', 'a changed key' );
+  is( $changed->{object}{meta_description}, 'changed', 'authentik stored it trimmed' );
   is( $api->find_application($prefix)->{name}, 'Live Test '.$prefix, 'and the rest is untouched' );
-  is( $api->ensure_application( slug => $prefix, meta_description => 'changed' )->{changed}, '', 'and settles again' );
+  is( $api->ensure_application( slug => $prefix, meta_description => "changed\n" )->{changed}, '',
+    'and settles, although what was asked for can never be stored' );
 
   my $without = error_of {
     $api->ensure_oauth2_provider( name => $prefix.'-second',
