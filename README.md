@@ -105,6 +105,10 @@ The suite prefixes everything it makes with a random name and deletes it again, 
 run beside other work and twice in a row. A throwaway authentik for it:
 `t/authentik/docker-compose.yml`, with `t/authentik/env.example` for the secrets.
 
+authentik throttles the device authorization endpoint to 20 requests an hour per client
+IP and answers 429 `slow_down` above that, which a handful of runs reaches;
+`AUTHENTIK_THROTTLE__PROVIDERS__OAUTH2__DEVICE` raises it, and the compose file does.
+
 ## A note on the user agent
 
 If you pass your own `ua`, keep `send_te => 0`. LWP announces the `TE` connection token by

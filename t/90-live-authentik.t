@@ -203,7 +203,17 @@ subtest 'OIDC' => sub {
   ok( !$oidc->introspect( $tokens->{access_token}, %client )->{active}, 'and it is gone' );
   is( error_of { $oidc->userinfo( $tokens->{access_token} ) }->oauth_error, 'invalid_token', 'userinfo refuses it' );
 
-  my $start = $oidc->device_authorization( %client, scope => 'openid' );
+  # the device authorization endpoint is throttled on its own, 20/hour per
+  # client IP by default, and then answers 429 slow_down before any device
+  # flow begins. A handful of runs within an hour is enough, so say what it
+  # is instead of failing on a bare OAuth code.
+  my $start;
+  my $failed = error_of { $start = $oidc->device_authorization( %client, scope => 'openid' ) };
+  my $status = ref $failed ? eval { $failed->http_status } : undef;
+  BAIL_OUT( 'the device authorization endpoint is throttled: authentik allows 20 requests an hour '
+    .'per client IP, raise AUTHENTIK_THROTTLE__PROVIDERS__OAUTH2__DEVICE on the instance' )
+    if $status && $status == 429;
+  die $failed if $failed;
   like( $start->{verification_uri_complete}, qr/\Q$start->{user_code}\E/, 'device_authorization' );
   my $pending = error_of { $oidc->device_token( device_code => $start->{device_code}, %client ) };
   is( $pending->oauth_error, 'authorization_pending', 'the first poll is pending' );

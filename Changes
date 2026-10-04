@@ -25,3 +25,7 @@ Revision history for WWW-Authentik
       client_id to the client and it is checked by itself
     - Live tests against a real authentik behind AUTHENTIK_LIVE_TEST, with a
       throwaway instance in t/authentik/
+    - The live suite now names the device authorization endpoint's own
+      throttle (429 slow_down, 20/hour per client IP in authentik 2026.8.3)
+      instead of dying on an opaque OAuth error; the throwaway docker-compose
+      raises it to 2000/hour
