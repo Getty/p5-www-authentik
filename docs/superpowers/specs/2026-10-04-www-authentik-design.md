@@ -728,3 +728,46 @@ Für den Plan; wo diese Punkte dem Text oben widersprechen oder ihn schärfen, g
 - **Erzwungenes TOTP ist vor dem Bau zu beobachten.** `not_configured_action: deny` an der
   Validation-Stage (6.2, 8.4) ist der Fall, den Airlock braucht: Login ohne eingerichtetes
   TOTP, Antwort des Executors, und `amr` nach dem Login mit TOTP.
+
+## 13. Nach dem Bau geklärt (2026-10-04)
+
+Beim Bau von Phase 1 und bei einem unabhängigen Review mit Proben gegen das laufende
+authentik 2026.8.3 sind Punkte aufgetaucht, die die Beobachtung in Abschnitt 8 nicht
+abgedeckt hatte. Sie sind behoben und durch Tests festgehalten; wo sie dem Text oben
+widersprechen, gelten sie.
+
+### 13.1 Beim Bauen gefunden
+
+- **Ein User-Agent darf `TE` nicht ankündigen.** LWP schickt standardmäßig
+  `TE: deflate,gzip;q=0.3` und `Connection: TE, close`. authentik beantwortet **jede zweite**
+  Anfrage, die den Verbindungs-Token `TE` trägt, überhaupt nicht: der Aufruf steht bis zum
+  Timeout, der nächste geht, der übernächste steht wieder. Mit rohen Sockets nachgestellt,
+  also authentiks Frontend und nicht LWP:
+
+  | Anfrage | Antwort |
+  |---|---|
+  | `Connection: close` viermal hintereinander | viermal 200 |
+  | `Connection: TE, close` viermal hintereinander | 200, nichts, 200, nichts |
+  | `Connection: TE` viermal hintereinander | viermal nichts |
+
+  `WWW::Authentik->default_ua` setzt deshalb `send_te => 0`, was `Net::HTTP` die Header
+  weglassen lässt. Ein eingeschleuster `ua` ohne diese Einstellung hängt; die POD der
+  Fassade sagt das. Ohne diesen Fund wäre die Dist gegen ein echtes authentik unbenutzbar
+  gewesen, und kein Unit-Test gegen das nachgebaute authentik hätte es gezeigt.
+- **authentik nimmt denselben TOTP-Code nicht zweimal.** Ein Login unmittelbar nach der
+  Einrichtung oder ein zweiter Login im selben 30-Sekunden-Fenster wird mit
+  `{"code":[{"code":"invalid","string":"Invalid Token. Please ensure the time on your device
+  is accurate and try again."}]}` abgelehnt. Das Executor-Hilfsmodul wartet deshalb auf das
+  nächste Fenster und schickt den Code noch einmal.
+- **Der Service-Account des Client-Credentials-Grants überlebt seinen Provider.** authentik
+  legt beim ersten `client_credentials` einen Nutzer `ak-<provider>-client_credentials`
+  (`path: goauthentik.io/apps/<slug>`) an; das Löschen von Provider und Application nimmt ihn
+  nicht mit. Fünf Läufe der Live-Suite hinterließen fünf Nutzer. Die Suite räumt ihn jetzt
+  selbst weg, und `delete_oauth2_provider` ist damit kein vollständiges Aufräumen.
+- **Ein Stage-Name gehört genau einem Stage-Typ.** Namen sind über alle Typen eindeutig, und
+  das typisierte Detail-Endpunkt eines fremden Typs antwortet 404
+  (`GET /stages/user_login/<UUID einer Password-Stage>/` →
+  `{"detail":"No UserLoginStage matches the given query."}`). `ensure_stage` ließ diese 404
+  durch und meldete etwas Unverständliches; es wirft jetzt einen Validation-Fehler, der sagt,
+  welchem Typ der Name wirklich gehört. Das nachgebaute authentik lieferte die Stage auch
+  über den falschen Typ aus und verbarg den Fall — es filtert jetzt nach Typ.
