@@ -1,0 +1,17 @@
+---
+claimed_at: 2026-10-04T05:33:37Z
+claimed_by: hub
+class: standard
+completed: 2026-10-04T05:33:37Z
+created: 2026-10-04T04:48:51Z
+id: 1
+priority: high
+started: 2026-10-04T05:33:37Z
+status: done
+tags:
+- spec
+title: 'Design: observe authentik live and write the spec'
+updated: 2026-10-04T05:33:37Z
+---
+
+Throwaway authentik in Docker on agent-lab, record what the API and the OIDC endpoints actually answer, write docs/superpowers/specs/<date>-www-authentik-design.md after the pattern of p5-www-keycloak/docs/superpowers/specs/2026-10-02-www-keycloak-design.md. Getty approves the spec before any code.
