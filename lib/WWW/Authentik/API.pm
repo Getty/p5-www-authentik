@@ -806,8 +806,16 @@ sub delete_blueprint { $_[0]->_done( DELETE => '/managed/blueprints/'.$_[0]->_es
 
     my $brand = $api->current_brand;
 
-The brand that applies to this request. C<flow_device_code> on it is what a
-device flow needs for a person to be able to approve it.
+The brand that applies to this request, as C<flow_device_code> and the other
+flows it names — what a device flow needs for a person to be able to approve
+it.
+
+B<This is the public view, and it cannot be written back.> It has neither
+C<brand_uuid> nor C<domain>, so there is nothing to hand L</update_brand>.
+To change a brand, take it from L</list_brands>:
+
+    my ( $brand ) = grep { $_->{default} } @{ $api->list_brands };
+    $api->update_brand( $brand->{brand_uuid}, { flow_device_code => $flow->{pk} } );
 
 =method update_brand
 
