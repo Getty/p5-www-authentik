@@ -1,6 +1,6 @@
 Revision history for WWW-Authentik
 
-{{$NEXT}}
+0.001     2026-10-04 18:04:50Z
     - Facade WWW::Authentik for an instance and, optionally, one application
     - WWW::Authentik::OIDC: discovery, JWKS, token verification, userinfo,
       introspection, revocation, the client credentials, authorization code,
