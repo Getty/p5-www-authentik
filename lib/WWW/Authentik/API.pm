@@ -34,9 +34,13 @@ call reaches is decided by the API token.
 
 The basic methods are one endpoint each. C<get_*> and C<find_*> return the
 representation as a hash (C<find_*> returns nothing when there is no match),
-C<list_*> an array reference with every match, following authentik's
-pagination, C<create_*> and C<update_*> the representation authentik answered
-with, and C<delete_*> true.
+C<list_*> an array reference with every match, C<create_*> and C<update_*> the
+representation authentik answered with, and C<delete_*> true.
+
+A C<list_*> walks authentik's pagination for you, asking for L</page_size>
+objects at a time and following C<pagination.next> until it is 0. It stops
+when a page comes round a second time, so an answer whose C<next> points
+backwards ends the walk instead of running for ever.
 
 Writing is C<PATCH>. authentik's C<PUT> wants the required fields but leaves
 everything else alone, so it replaces nothing that C<PATCH> would not; there
@@ -170,17 +174,6 @@ sub _paged {
   }
   return \@all;
 }
-
-=method _paged
-
-    my $all = $api->_paged( '/core/users/', username => 'alice' );
-
-Every object of a list endpoint, following C<pagination.next> until it is 0.
-Used by every C<list_*>. It stops when a page comes round a second time, so
-an answer whose C<next> points backwards ends the loop instead of running for
-ever.
-
-=cut
 
 sub _missing {
   my ( $self, $error ) = @_;
