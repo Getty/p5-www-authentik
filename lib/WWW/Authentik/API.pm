@@ -111,9 +111,24 @@ How many objects a C<list_*> asks for per request. Default 100.
 =cut
 
 # what counts as an identifier rather than a readable name, per field; see
-# resolvable_fields below
+# resolvable_fields below. Named methods, not lexicals, so that
+# Net::Async::Authentik asks the same two questions instead of writing the
+# patterns out a second time.
 my $UUID    = qr{\A[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\z};
 my $INTEGER = qr{\A[0-9]+\z};
+
+sub uuid_pattern    { $UUID }
+sub integer_pattern { $INTEGER }
+
+=method uuid_pattern
+
+=method integer_pattern
+
+The two shapes L</resolve> takes for an identifier rather than a name: a
+UUID and a run of digits. L<Net::Async::Authentik::API> uses these so the
+distinction is made in one place.
+
+=cut
 
 sub diff_class { 'WWW::Authentik::Diff' }
 

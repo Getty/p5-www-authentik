@@ -24,6 +24,18 @@ my $named_123 = $fake->add( providers => { name => '123', authorization_flow => 
 my $pk_123    = $fake->add( providers => { pk => 123, name => 'real-provider', authorization_flow => 'f', invalidation_flow => 'f', redirect_uris => [] } );
 isnt( $named_123->{pk}, 123, 'the provider called "123" has another primary key' );
 
+subtest 'the two identifier shapes are named, not hidden' => sub {
+  # the async twin asks for these instead of writing the patterns again
+  my $uuid = WWW::Authentik::API->uuid_pattern;
+  my $int  = WWW::Authentik::API->integer_pattern;
+  like( '11111111-2222-4333-8444-555555555555', $uuid, 'a UUID' );
+  unlike( 'default-authentication-flow', $uuid, 'and a slug is not one' );
+  like( '123', $int, 'a run of digits' );
+  unlike( '12a', $int, 'and not a name that starts with one' );
+  is( $api->resolvable_fields->{provider}{raw}, $int, 'the table uses them' );
+  is( $api->resolvable_fields->{authorization_flow}{raw}, $uuid, 'both of them' );
+};
+
 subtest 'an integer field' => sub {
   is( $api->resolve( { provider => '123' } )->{provider}, '123', 'an integer is the primary key, never a name' );
   is( $api->resolve( { provider => 123 } )->{provider}, 123, 'as a number too' );
