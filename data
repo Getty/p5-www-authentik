@@ -1,0 +1,35 @@
+---
+class: standard
+created: 2026-10-06T19:18:47Z
+id: 3
+priority: high
+status: backlog
+tags:
+- bug
+- api
+- errors
+- twin
+- review-2026-10-06
+title: 'API calls treat a 3xx answer as success: lists come back empty, ensure_* reports
+  ''created'' with no object'
+updated: 2026-10-06T19:18:47Z
+---
+
+`WWW::Authentik::Role::HTTP::read_response` returns a result for every status below 400 (`lib/WWW/Authentik/Role/HTTP.pm:94-95`). That is right for the OIDC authorize endpoint and flow stages, where a 302 is the answer. For the REST API it is not: the user agent follows no redirects (`max_redirect => 0`, `lib/WWW/Authentik.pm:145`), so any redirect in front of `/api/v3` - `base_url => 'http://...'` behind a proxy that forces https, a proxy that bounces to a login page, a canonical-host redirect - ends up in `_data` as `{ data => undef }` and nobody looks at the status.
+
+Reproduce with a user agent that answers every request with `301` + `Location`:
+
+    my $a = WWW::Authentik->new( base_url => 'http://auth.example', token => 't', ua => $mock );
+    $a->api->list_users;                 # [] - no exception
+    $a->api->find_user('alice');         # undef
+    $a->api->version;                    # undef
+    $a->api->create_user({ ... });       # undef, no exception
+
+(verified, four requests sent, none raised). Through `_ensure` (`lib/WWW/Authentik/API.pm:968-975`) that becomes `{ object => undef, changed => 'created' }`: an idempotent provisioning run against a mistyped or http base_url reports that it created everything and has written nothing. `_paged` (`API.pm:191`) hides it the same way with `last unless ref $data eq 'HASH'`.
+
+The async twin composes the same `read_response` (`p5-net-async-authentik/lib/Net/Async/Authentik/Role/HTTP.pm:25,105`), so it behaves identically.
+
+Done: `WWW::Authentik::API::call` (and `call_f`) raise `Error::API` for a 3xx, naming the `Location` so the reader sees where the server wanted to send them; OIDC keeps reading 302. Tests in `t/50-api.t` and the twin's `t/50-api.t`: a 301 on a GET, a list and an `ensure_*` each throw.
+
+---
+Fleet review 2026-10-06 · kind: bug · confidence: verified
