@@ -153,7 +153,19 @@ sub call {
   my ( $self, $method, $path, $body ) = @_;
   $path = '/'.$path unless $path =~ m{\A/};
   my %arg = defined $body ? ( json => $body ) : ();
-  return $self->send_request( $method, $self->api_url.$path, %arg, bearer => $self->token );
+  my $url    = $self->api_url.$path;
+  my $result = $self->send_request( $method, $url, %arg, bearer => $self->token );
+  # the user agent follows no redirects, and the REST API never answers one
+  # itself: a 3xx means something in front of authentik (http to https, a
+  # login page, another host) took the request, and nothing was written
+  $self->api_error_class->throw(
+    message     => $method.' '.$url.' was redirected: '.$result->{status}
+      .( defined $result->{location} ? ' to '.$result->{location} : '' )
+      .' - check base_url',
+    http_status => $result->{status},
+    api_message => 'redirected'.( defined $result->{location} ? ' to '.$result->{location} : '' ),
+  ) if $result->{status} >= 300;
+  return $result;
 }
 
 =method call
@@ -162,7 +174,10 @@ sub call {
     my $result = $api->call( POST => '/core/groups/', { name => 'staff' } );
 
 One request against the API. Returns what
-L<WWW::Authentik::Role::HTTP/send_request> returns. The way to reach an
+L<WWW::Authentik::Role::HTTP/send_request> returns. Throws
+L<WWW::Authentik::Error::API> for a redirect (3xx) as well as for 400 and
+above: the REST API does not redirect, so a redirect means a proxy or a wrong
+C<base_url> sits in front of it, and the message names the C<Location>. The way to reach an
 endpoint this class has no method for. Mind the trailing slash: authentik
 answers a path without one with 404, and this method adds nothing.
 

@@ -1,6 +1,9 @@
 Revision history for WWW-Authentik
 
 {{$NEXT}}
+    - WWW::Authentik::API::call throws WWW::Authentik::Error::API for a 3xx
+      answer, naming the Location, instead of returning an empty result; lists
+      and ensure_* no longer pretend success behind a redirecting base_url
 
 0.001     2026-10-04 18:04:50Z
     - Facade WWW::Authentik for an instance and, optionally, one application

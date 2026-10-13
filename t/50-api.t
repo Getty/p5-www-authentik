@@ -5,6 +5,8 @@ use Test::More;
 use lib 't/lib';
 
 use FakeAuthentik;
+use HTTP::Response;
+use LWP::UserAgent;
 use WWW::Authentik;
 
 sub error_of (&) { my ( $code ) = @_; eval { $code->(); 1 } ? undef : $@ }
@@ -231,6 +233,26 @@ subtest 'brands, certificates and blueprints' => sub {
   is( $api->apply_blueprint( $blueprint->{pk} )->{status}, 'successful', 'apply_blueprint' );
   is( $api->get_blueprint( $blueprint->{pk} )->{status}, 'successful', 'get_blueprint' );
   ok( $api->delete_blueprint( $blueprint->{pk} ), 'delete_blueprint' );
+};
+
+subtest 'a redirect is an error' => sub {
+  package RedirectUA { our @ISA = ("LWP::UserAgent"); sub request {
+    my $r = HTTP::Response->new( 301, 'Moved Permanently' );
+    $r->header( Location => 'https://auth.example/api/v3/x' );
+    return $r;
+  } }
+  my $moved = WWW::Authentik->new( base_url => 'http://auth.example', token => 't', ua => RedirectUA->new )->api;
+  for my $case (
+    [ call        => sub { $moved->call( GET => '/core/users/' ) } ],
+    [ list_users  => sub { $moved->list_users } ],
+    [ version     => sub { $moved->version } ],
+    [ create_user => sub { $moved->create_user( { username => 'a', name => 'A' } ) } ],
+  ) {
+    my $error = error_of { $case->[1]->() };
+    isa_ok( $error, 'WWW::Authentik::Error::API', $case->[0] );
+    is( $error->http_status, 301, "$case->[0]: status" ) if $error;
+    like( $error ? $error->message : '', qr{redirected.*https://auth\.example/api/v3/x}, "$case->[0]: names the Location" );
+  }
 };
 
 done_testing;
