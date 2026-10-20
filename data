@@ -1,0 +1,36 @@
+---
+claimed_at: 2026-10-20T09:23:13Z
+claimed_by: k4-k7
+class: standard
+completed: 2026-10-20T09:23:13Z
+created: 2026-10-20T08:51:08Z
+id: 4
+priority: high
+started: 2026-10-20T08:54:37Z
+status: done
+tags:
+- oidc
+- errors
+title: The OIDC path must check the answer of the token endpoint
+updated: 2026-10-20T09:23:13Z
+---
+
+The OIDC path does not check the answer of the token endpoint.
+
+lib/WWW/Authentik/OIDC.pm:487 returns ->{data} // {} from _token_call, without looking at the status or at the form of the answer. The same repository checks the 3xx on the API path (lib/WWW/Authentik/API.pm:161-167), the OIDC path does not. The cause is in lib/WWW/Authentik/Role/HTTP.pm:94: read_response delivers a result for every status below 400.
+
+Failure case: the token endpoint answers 302 (a redirect from http to https, a login portal in front of it). client_credentials_token, refresh_token, exchange_authorization_code and device_token deliver {} without an exception. The caller sends Authorization: Bearer without a token and sees later "verify_token needs a token" instead of "the token endpoint has redirected".
+
+Decide: _token_call raises a WWW::Authentik::Error::API with method, path and status when the status is 300 or above, or when the data is no token hash.
+
+The test that holds this down must be red against the old lib/ and fail as a failed expectation, not as a die.
+
+2026-10-20 09:05 Done: commit f280645 on branch k4-k7. _token_call throws WWW::Authentik::Error::API on a status >= 300 (method, path, status, 'was redirected: 302 to ... - check base_url'); _grant throws when the answer carries no access_token. introspect/revoke/device_authorization keep working without an access_token. Test t/61-oidc-token.t was red against the old lib/ (failed expectations, no die), suite green: 10 files, 66 tests. Also found: the async twin p5-net-async-authentik must mirror the new _token_call/_grant and the rethrow in verify_token.
+
+Also found, gathered over k4 to k7 (nothing else was changed, no new card was made):
+- The async twin p5-net-async-authentik must mirror the new _token_call/_grant (k4), the JSON check and the raw option in Role::HTTP (k5) and the JWKS check and the verify_token change (k6). It is not touched from this repo.
+- Types::Standard was used in lib/ but not declared in the cpanfile, so a fresh install of the distribution failed. Fixed in k7.
+- Test::Pod was not declared for the author tests, so dzil test --all failed without it. Fixed in k7 in the develop phase, the way the sibling dists do it.
+- Type::Tiny is declared in the cpanfile, but the code uses Types::Standard, which carries it. The declaration is redundant, left as it is.
+
+Erledigt in f280645, nach main gezogen. Der Token-Endpunkt wird geprueft: ein 3xx (etwa eine Seite eines Proxy davor) ist ein API-Fehler mit Methode, Pfad und Status, und ein Grant ohne access_token ist auch einer — sonst wuerde der Aufrufer einen leeren Bearer senden. introspect und device_authorization lesen die Daten aus der Antwort und arbeiten unveraendert weiter. Rot-Nachweis: t/61-oidc-token.t ist gegen das alte lib/ rot (8 fehlgeschlagene Erwartungen in 2 Subtests, kein die). Suite gruen: 13 Dateien, 89 Tests.
