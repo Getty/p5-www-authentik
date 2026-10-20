@@ -1,0 +1,44 @@
+---
+claimed_at: 2026-10-20T09:23:37Z
+claimed_by: k4-k7
+class: standard
+completed: 2026-10-20T09:23:37Z
+created: 2026-10-20T08:51:18Z
+id: 6
+priority: low
+started: 2026-10-20T08:54:47Z
+status: done
+tags:
+- oidc
+- errors
+title: The JWKS answer must be checked before it is cached
+updated: 2026-10-20T09:23:37Z
+---
+
+The JWKS answer is cached without a check.
+
+lib/WWW/Authentik/OIDC.pm:205 puts ->{data} into the cache without looking at it.
+
+Failure case: the JWKS endpoint answers 200 with HTML. _jwks stays undef, and verify_token (OIDC.pm:252-260) throws away a valid token with "kid_keys lookup failed", because decode_jwt fails on undef.
+
+Decide: before the caching is checked that the answer is a hash with keys, otherwise an API error is raised.
+
+Implemented on branch k4-k7, commit 34a651d.
+
+WWW::Authentik::OIDC::jwks checks the answer before it is cached: an answer
+that is no hash with a keys array throws WWW::Authentik::Error::API naming
+the method, the URL and the status, and nothing is cached.
+
+verify_token fetches the keys out of the try block, so such an answer is an
+error of its own and not a token that is rejected.
+
+Test: t/62-oidc-jwks.t (new). It was red against the old lib as failed
+expectations: jwks answered without an error, verify_token rejected the
+token with 'kid_keys lookup failed'.
+
+Offline suite: prove -lr t, Files=12 Tests=71, all green.
+
+Also found: the async twin Net::Async::Authentik::OIDC needs the same check
+and the same change in verify_token; it is not touched from this repo.
+
+Erledigt in 34a651d, nach main gezogen. Der JWKS-Endpunkt wird geprueft: eine Antwort ohne keys-Array ist ein API-Fehler mit Methode, URL und Status, und es wird nichts gecacht. verify_token holt die Schluessel ausserhalb des try-Blocks, damit eine kaputte JWKS-Antwort ein Fehler der Instanz ist und nicht ein abgelehntes Token. Rot-Nachweis: t/62-oidc-jwks.t ist gegen das alte lib/ rot (7 fehlgeschlagene Erwartungen in 2 Subtests, kein die).
