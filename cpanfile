@@ -6,10 +6,15 @@ requires 'LWP::Protocol::https';
 requires 'LWP::UserAgent', '6.33';
 requires 'Moo';
 requires 'Type::Tiny';
+requires 'Types::Standard';
 requires 'URI';
 requires 'namespace::autoclean', '0.16';
 
 on test => sub {
     requires 'CryptX';
     requires 'Test::More', '0.96';
+};
+
+on develop => sub {
+    requires 'Test::Pod';
 };

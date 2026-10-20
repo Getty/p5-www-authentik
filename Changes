@@ -8,6 +8,11 @@ Revision history for WWW-Authentik
     - The JWKS answer is checked before it is cached: an answer that carries
       no keys is an error that names the status, the method and the path,
       and a token is no longer rejected because of it
+    - The declared prerequisites are checked by a test that reads the
+      cpanfile
+    - Types::Standard is a declared prerequisite: the code uses it, and a
+      fresh install failed without it
+    - Test::Pod is a declared prerequisite for the author tests
     - WWW::Authentik::API::call throws WWW::Authentik::Error::API for a 3xx
       answer, naming the Location, instead of returning an empty result; lists
       and ensure_* no longer pretend success behind a redirecting base_url
