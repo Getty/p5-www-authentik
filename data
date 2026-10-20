@@ -1,0 +1,48 @@
+---
+claimed_at: 2026-10-20T09:23:28Z
+claimed_by: k4-k7
+class: standard
+completed: 2026-10-20T09:23:28Z
+created: 2026-10-20T08:51:13Z
+id: 5
+priority: medium
+started: 2026-10-20T08:54:42Z
+status: done
+tags:
+- http
+- errors
+title: An answer that is not JSON must be an error
+updated: 2026-10-20T09:23:28Z
+---
+
+The JSON parse error is swallowed.
+
+lib/WWW/Authentik/Role/HTTP.pm:91 puts the JSON decode into the eval, but the error is never looked at. A 2xx answer without JSON gives data => undef, that is a quiet success.
+
+Failure case: a proxy or a captive portal answers 200 with HTML. list_users (API.pm:270) delivers an empty list, ensure_user (API.pm:983-994) holds the user for "not existing", creates it and reports { object => undef, changed => 'created' } - the caller dies with "Can't use an undefined value as a HASH reference" in its own code. userinfo delivers undef, verify_token reports "token rejected: kid_keys lookup failed".
+
+Decide: a 2xx answer whose body is no JSON object is raised as an API error with status, method, path and a snippet of the body.
+
+The test that holds this down must be red against the old lib/ and fail as a failed expectation, not as a die.
+
+Implemented on branch k4-k7, commit 62eca62.
+
+A 2xx whose body is no JSON now throws WWW::Authentik::Error::API from
+WWW::Authentik::Role::HTTP::read_response. The error names the method, the
+URL, the status and a snippet of the body, never the token.
+
+The flow export answers with YAML and a text/html content type, so
+WWW::Authentik::API::call takes a raw option that turns the check off, and
+export_flow uses it.
+
+Test: t/21-http.t (new). It was red against the old lib as failed
+expectations: list_users answered an empty list, ensure_user reported
+created. The export subtest was green before and after.
+
+Offline suite: prove -lr t, Files=11 Tests=69, all green.
+
+Also found: the async twin Net::Async::Authentik::Role::HTTP reads the
+response the same way and needs the same check and the same raw option; it
+is not touched from this repo.
+
+Erledigt in 62eca62, nach main gezogen. Ein 2xx, dessen Body kein JSON ist, ist jetzt ein API-Fehler mit Methode, URL, Status und einem Ausschnitt des Bodys — vorher wurde die Seite eines Proxy als leeres Objekt genommen und eine Liste kam leer zurueck. Der Flow-Export antwortet mit YAML und nutzt darum raw => 1, damit er YAML bleibt. Rot-Nachweis: t/21-http.t ist gegen das alte lib/ rot (5 fehlgeschlagene Erwartungen in 2 Subtests, kein die); der Export liefert weiter YAML.
