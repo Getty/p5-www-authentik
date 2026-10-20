@@ -1,0 +1,62 @@
+---
+claimed_at: 2026-10-20T09:23:46Z
+claimed_by: k4-k7
+class: standard
+completed: 2026-10-20T09:23:46Z
+created: 2026-10-20T08:51:23Z
+id: 7
+priority: low
+started: 2026-10-20T08:54:53Z
+status: done
+tags:
+- cpanfile
+- test
+title: The declared prerequisites must be checked by a test
+updated: 2026-10-20T09:23:46Z
+---
+
+No test in t/ reads the cpanfile, so a prerequisite that the code uses but that is missing in the cpanfile stays unnoticed.
+
+Decide: a new t/cpanfile.t reads the cpanfile and checks every prerequisite that the code uses. /home/getty/dev/p5-www-vastai/t/cpanfile.t is the pattern to follow.
+
+Implemented on branch k4-k7, commit dc0388c.
+
+t/cpanfile.t (new) reads the cpanfile, scans lib and t for the modules the
+code loads, and checks that every one of them is declared in the right
+phase: the runtime ones in the cpanfile itself, the ones only the tests
+need in the on test section. A module of the perl core, a pragma and a
+module of this distribution need no declaration.
+
+The test found a real gap: Types::Standard is used in lib/ but was not
+declared, so a fresh install of the distribution failed. It is declared now.
+
+Note: this test reads a file, not the behaviour of the code, so it is not
+red against the old lib. It was red against the old cpanfile though, with
+one failed expectation for Types::Standard.
+
+Offline suite: prove -lr t, Files=13 Tests=89, all green.
+
+Implemented on branch k4-k7, commit ad81e5d.
+
+t/cpanfile.t (new) reads the cpanfile, scans lib and t for the modules the
+code loads, and checks that every one of them is declared in the right
+phase: the runtime ones in the cpanfile itself, the ones the tests need in
+the on test section, the ones the generated author and release tests need in
+the on develop section. A module of the perl core, a pragma and a module of
+this distribution need no declaration.
+
+The test found two real gaps:
+- Types::Standard is used in lib/ but was not declared, so a fresh install
+  of the distribution failed. It is declared now.
+- Test::Pod was not declared for the author tests, so dzil test --all
+  failed on a machine that has no Test::Pod. It is declared in the develop
+  phase now, the way the sibling dists do it.
+
+Note: this test reads a file, not the behaviour of the code, so it is not
+red against the old lib. It was red against the old cpanfile though, with
+one failed expectation for Types::Standard.
+
+Offline suite: prove -lr t, Files=13 Tests=89, all green.
+dzil test --all: Files=15 Tests=101, all green.
+
+Erledigt in ad81e5d, nach main gezogen. t/cpanfile.t liest das cpanfile, sucht die geladenen Module in lib/ und t/ und prueft die Deklaration je Phase. Dabei kamen Types::Standard (der Code nutzt es, eine frische Installation scheiterte ohne) und Test::Pod (Autorentests) dazu. Der Test prueft Dateien und kein Verhalten — er ist gegen das alte lib/ gruen, das ist hier so vermerkt. Der .worktreeinclude kam als eigener Commit 60e7831 dazu (chore, skilletor), nicht in einen Karten-Commit.
