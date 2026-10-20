@@ -150,9 +150,12 @@ sub api_url { $_[0]->base_url.'/api/v3' }
 =cut
 
 sub call {
-  my ( $self, $method, $path, $body ) = @_;
+  my ( $self, $method, $path, $body, %opt ) = @_;
   $path = '/'.$path unless $path =~ m{\A/};
   my %arg = defined $body ? ( json => $body ) : ();
+  # the flow export answers with YAML and a text/html content type; that one
+  # wants the body as it is
+  $arg{raw} = 1 if $opt{raw};
   my $url    = $self->api_url.$path;
   my $result = $self->send_request( $method, $url, %arg, bearer => $self->token );
   # the user agent follows no redirects, and the REST API never answers one
@@ -172,6 +175,7 @@ sub call {
 
     my $result = $api->call( GET => '/core/users/?username=alice' );
     my $result = $api->call( POST => '/core/groups/', { name => 'staff' } );
+    my $result = $api->call( GET => '/flows/instances/probe/export/', undef, raw => 1 );
 
 One request against the API. Returns what
 L<WWW::Authentik::Role::HTTP/send_request> returns. Throws
@@ -180,6 +184,10 @@ above: the REST API does not redirect, so a redirect means a proxy or a wrong
 C<base_url> sits in front of it, and the message names the C<Location>. The way to reach an
 endpoint this class has no method for. Mind the trailing slash: authentik
 answers a path without one with 404, and this method adds nothing.
+
+C<< raw => 1 >> takes the body as it is, without the check for JSON that
+every other call gets. The flow export needs it: authentik answers that one
+with YAML.
 
 =cut
 
@@ -654,7 +662,8 @@ sub find_flow {
 
 sub export_flow {
   my ( $self, $slug ) = @_;
-  return $self->call( GET => '/flows/instances/'.$self->_esc($slug).'/export/' )->{content};
+  # authentik answers the export with YAML and a text/html content type
+  return $self->call( GET => '/flows/instances/'.$self->_esc($slug).'/export/', undef, raw => 1 )->{content};
 }
 
 =method list_flows

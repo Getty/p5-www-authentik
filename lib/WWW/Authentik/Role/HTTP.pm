@@ -88,7 +88,27 @@ sub read_response {
   # for gzip.
   my $bytes   = $response->decoded_content( charset => 'none' ) // '';
   my $content = $response->decoded_content // '';
-  my $data    = length $bytes ? eval { $self->json_codec->decode($bytes) } : undef;
+  # the answer is JSON or it is nothing: a body that cannot be decoded is a
+  # page from a proxy, not an empty object
+  my $data;
+  my $decoded = 0;
+  if ( length $bytes ) {
+    $data    = eval { $self->json_codec->decode($bytes) };
+    $decoded = $@ ? 0 : 1;
+  }
+  # a 2xx that carries no JSON is a page from something in front of authentik:
+  # a proxy, a captive portal, a login page. Taking it for an empty object
+  # would make a list come back empty and look like an instance without users
+  if ( !$arg{raw} && $response->code >= 200 && $response->code < 300 && length $bytes && !$decoded ) {
+    my $snippet = $self->_snippet($content);
+    $self->api_error_class->throw(
+      message     => $method.' '.$url.' failed: '.$response->status_line
+        .( length $snippet ? ' - '.$snippet : '' ),
+      http_status => $response->code,
+      api_message => ( length $snippet ? $snippet : undef ),
+      body        => ( length $content ? $content : undef ),
+    );
+  }
   # authentik answers 302 at the authorize endpoint and between the stages of
   # a flow; that is an answer, not a failure
   return { status => $response->code, data => $data, location => scalar $response->header('Location'), content => $content }
@@ -120,8 +140,7 @@ sub read_response {
   # only "404 Not Found" would leave the reader with nothing to go on, so a
   # squeezed snippet of whatever came back stands in.
   if ( ( !defined $message || !length $message ) && length $body ) {
-    my $snippet = $body =~ s/\s+/ /gr =~ s/\A\s+|\s+\z//gr;
-    $snippet = substr( $snippet, 0, 200 ).'...' if length $snippet > 200;
+    my $snippet = $self->_snippet($body);
     $message = $snippet if length $snippet;
   }
   $self->api_error_class->throw(
@@ -146,6 +165,13 @@ for any status of 400 and above. Anything below 400 is an answer, because
 authentik redirects where it wants a browser. C<%arg> are the arguments the
 request was built with.
 
+A 2xx whose body is no JSON is an error as well: something in front of
+authentik answered with a page, and taking that for an empty object would
+make a list come back empty and look like an instance without users. The
+error names the method, the URL, the status and a snippet of the body. A
+call that wants the body as it is — the flow export is YAML — turns the
+check off with C<< raw => 1 >>.
+
 The body is read through L<HTTP::Response/decoded_content>, so a user agent
 that asked for a compressed answer still gets its JSON.
 
@@ -158,6 +184,14 @@ The thrown error names the method and the URL, never the token or the
 secret.
 
 =cut
+
+# the body as one squeezed line of at most 200 characters
+sub _snippet {
+  my ( $self, $body ) = @_;
+  my $snippet = $body =~ s/\s+/ /gr =~ s/\A\s+|\s+\z//gr;
+  $snippet = substr( $snippet, 0, 200 ).'...' if length $snippet > 200;
+  return $snippet;
+}
 
 sub flatten_field_errors {
   my ( $self, $data, $prefix ) = @_;
