@@ -1,6 +1,8 @@
 Revision history for WWW-Authentik
 
 {{$NEXT}}
+    - The token endpoint is checked: a redirect or an answer without a token
+      is an error that names the status, the method and the path
     - WWW::Authentik::API::call throws WWW::Authentik::Error::API for a 3xx
       answer, naming the Location, instead of returning an empty result; lists
       and ensure_* no longer pretend success behind a redirecting base_url

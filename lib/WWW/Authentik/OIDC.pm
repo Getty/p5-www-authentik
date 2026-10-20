@@ -38,6 +38,11 @@ An error from the token endpoint is a L<WWW::Authentik::Error::API> whose
 C<oauth_error> carries the OAuth code, so a device-flow poll can tell
 C<authorization_pending> from a real failure.
 
+A token endpoint that redirects, or that answers without a token, is an
+error as well. It names the method, the path and the status, so a
+C<base_url> that points at a proxy or at the wrong scheme is told apart
+from a token that was refused.
+
 There is no direct grant for a normal user: authentik's C<grant_type=password>
 is the same door as C<client_credentials> with a username, and it only opens
 for a service account with an app-password token. A login as a person goes
@@ -333,7 +338,7 @@ body is empty.
 sub introspect {
   my ( $self, $token, %client ) = @_;
   return $self->_token_call( $self->introspection_endpoint,
-    { token => $token, defined $client{token_type_hint} ? ( token_type_hint => $client{token_type_hint} ) : () }, %client );
+    { token => $token, defined $client{token_type_hint} ? ( token_type_hint => $client{token_type_hint} ) : () }, %client )->{data} // {};
 }
 
 =method introspect
@@ -415,7 +420,7 @@ A code can be exchanged once; the second try is an C<invalid_grant>.
 sub device_authorization {
   my ( $self, %arg ) = @_;
   return $self->_token_call( $self->device_endpoint,
-    { defined $arg{scope} ? ( scope => $arg{scope} ) : () }, %arg );
+    { defined $arg{scope} ? ( scope => $arg{scope} ) : () }, %arg )->{data} // {};
 }
 
 =method device_authorization
@@ -472,8 +477,19 @@ driving that is a browser's job, or the flow executor's.
 
 sub _grant {
   my ( $self, $type, $fields, %arg ) = @_;
-  return $self->_token_call( $self->token_endpoint,
+  my $url    = $self->token_endpoint;
+  my $result = $self->_token_call( $url,
     { grant_type => $type, map { $_ => $arg{$_} } grep { defined $arg{$_} } @$fields }, %arg );
+  my $data = $result->{data};
+  # a token endpoint that answers without a token: a proxy's page, a portal
+  # in front of it. The caller would send an empty Bearer and find out much
+  # later, somewhere else.
+  $self->api_error_class->throw(
+    message     => 'POST '.$url.' answered '.$result->{status}.' without an access_token',
+    http_status => $result->{status},
+    api_message => 'no access_token in the answer',
+  ) unless ref $data eq 'HASH' && $data->{access_token};
+  return $data;
 }
 
 sub _token_call {
@@ -484,7 +500,18 @@ sub _token_call {
     client_id => $arg{client_id},
     defined $arg{client_secret} ? ( client_secret => $arg{client_secret} ) : ()
   );
-  return $self->send_request( POST => $url, form => \%form )->{data} // {};
+  my $result = $self->send_request( POST => $url, form => \%form );
+  # the user agent follows no redirect, and the token endpoint never answers
+  # one itself: a 3xx means something in front of authentik took the request,
+  # and no token came back
+  $self->api_error_class->throw(
+    message     => 'POST '.$url.' was redirected: '.$result->{status}
+      .( defined $result->{location} ? ' to '.$result->{location} : '' )
+      .' - check base_url',
+    http_status => $result->{status},
+    api_message => 'redirected'.( defined $result->{location} ? ' to '.$result->{location} : '' ),
+  ) if $result->{status} >= 300;
+  return $result;
 }
 
 1;
