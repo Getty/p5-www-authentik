@@ -207,7 +207,18 @@ The endpoints out of the discovery document.
 sub jwks {
   my ( $self, %opt ) = @_;
   if ( $opt{force_refresh} || !$self->_jwks ) {
-    $self->_jwks( $self->send_request( GET => $self->jwks_uri )->{data} );
+    my $url    = $self->jwks_uri;
+    my $result = $self->send_request( GET => $url );
+    my $data   = $result->{data};
+    # an answer that carries no keys is a page from something in front of
+    # authentik, not an empty key set. Caching it would throw every token
+    # away later with a key lookup error
+    $self->api_error_class->throw(
+      message     => 'GET '.$url.' answered '.$result->{status}.' without keys',
+      http_status => $result->{status},
+      api_message => 'the JWKS answer carries no keys',
+    ) unless ref $data eq 'HASH' && ref $data->{keys} eq 'ARRAY';
+    $self->_jwks($data);
     $self->_jwks_fetched( $self->now->() );
   }
   return $self->_jwks;
@@ -219,6 +230,10 @@ sub jwks {
     my $keys = $oidc->jwks( force_refresh => 1 );
 
 The application's public signing keys, kept after the first fetch.
+
+An answer that carries no keys is an error: it names the method, the URL
+and the status, and nothing is cached. A token is never rejected because of
+it.
 
 =cut
 
@@ -254,12 +269,17 @@ sub verify_token {
     decode_payload => 1,
     defined $audience ? ( verify_aud => $audience ) : ()
   );
-  my $claims = eval { decode_jwt( %check, kid_keys => $self->jwks ) };
+  # the keys are fetched out of the try block: an answer of the JWKS that
+  # carries no keys is a problem of the instance, not a reason to call the
+  # token bad
+  my $keys = $self->jwks;
+  my $claims = eval { decode_jwt( %check, kid_keys => $keys ) };
   my $error  = $@;
   # a key authentik rotated in since the keys were fetched: fetch them again,
   # but only for that reason and not more often than jwks_min_age allows
   if ( !$claims && $error =~ /kid_keys lookup failed/ && $self->now->() - ( $self->_jwks_fetched // 0 ) >= $self->jwks_min_age ) {
-    $claims = eval { decode_jwt( %check, kid_keys => $self->jwks( force_refresh => 1 ) ) };
+    $keys   = $self->jwks( force_refresh => 1 );
+    $claims = eval { decode_jwt( %check, kid_keys => $keys ) };
     $error  = $@;
   }
   $self->_reject( $error =~ s/ at \S+ line \d+.*//sr ) unless $claims;

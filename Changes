@@ -5,6 +5,9 @@ Revision history for WWW-Authentik
       is an error that names the status, the method and the path
     - An answer that is not JSON is an error that names the status, the
       method, the path and a snippet of the body
+    - The JWKS answer is checked before it is cached: an answer that carries
+      no keys is an error that names the status, the method and the path,
+      and a token is no longer rejected because of it
     - WWW::Authentik::API::call throws WWW::Authentik::Error::API for a 3xx
       answer, naming the Location, instead of returning an empty result; lists
       and ensure_* no longer pretend success behind a redirecting base_url
