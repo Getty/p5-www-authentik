@@ -2,91 +2,91 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** `WWW::Authentik` Phase 1 bauen: Fassade, Fehler, die REST-API v3 mit wiederholbaren `ensure_*`-Methoden, OIDC gegen eine Application, Unit-Tests gegen ein nachgebautes authentik und eine Live-Suite gegen ein echtes.
+**Goal:** Build `WWW::Authentik` phase 1: facade, errors, the REST API v3 with repeatable `ensure_*` methods, OIDC against an application, unit tests against an emulated authentik and a live suite against a real one.
 
-**Architecture:** Moo-Klassen nach dem Muster von `WWW::Keycloak`, aber eigenständig: `WWW::Authentik` ist die Fassade für eine Instanz und optional eine Application und baut `WWW::Authentik::OIDC` und `WWW::Authentik::API` mit einer gemeinsamen `LWP::UserAgent`. Das Senden und das Abbilden von authentiks vier Fehlerformen liegt in der Rolle `WWW::Authentik::Role::HTTP`, aufgeteilt in `build_request` / `read_response` / `send_request`, damit der Zwilling die ersten beiden mitbenutzt. Der Vergleich hinter `ensure_*` ist eine reine Funktion ohne I/O (`WWW::Authentik::Diff`). Keine Abhängigkeit auf `WWW-Keycloak`.
+**Architecture:** Moo classes following the pattern of `WWW::Keycloak`, but standalone: `WWW::Authentik` is the facade for an instance and optionally an application and builds `WWW::Authentik::OIDC` and `WWW::Authentik::API` with a shared `LWP::UserAgent`. Sending and mapping authentik's four error forms lives in the role `WWW::Authentik::Role::HTTP`, split into `build_request` / `read_response` / `send_request`, so the twin can reuse the first two. The comparison behind `ensure_*` is a pure function without I/O (`WWW::Authentik::Diff`). No dependency on `WWW-Keycloak`.
 
-**Tech Stack:** Perl 5.20+, Moo, Types::Standard, LWP::UserAgent, HTTP::Message, JSON::MaybeXS, Crypt::JWT, URI. Dist::Zilla mit `[@Author::GETTY]`.
+**Tech Stack:** Perl 5.20+, Moo, Types::Standard, LWP::UserAgent, HTTP::Message, JSON::MaybeXS, Crypt::JWT, URI. Dist::Zilla with `[@Author::GETTY]`.
 
-**Spec:** `docs/superpowers/specs/2026-10-04-www-authentik-design.md` (freigegeben 2026-10-04, mit Abschnitt 12 aus dem Freigabe-Review).
+**Spec:** `docs/superpowers/specs/2026-10-04-www-authentik-design.md` (approved 2026-10-04, with section 12 from the approval review).
 
-## Stand dieses Plans
+## State of this plan
 
-Der Plan ist für einen Ausführenden ohne Vorwissen geschrieben, aber er ist **kein
-vollständiges Code-Listing** wie der Keycloak-Plan. Vollständig ausgeschrieben ist, was
-sich nicht aus der Spec ableiten lässt und wo ein Fehler teuer ist: `Diff`, die
-Fehlerklassen und die Abbildung der vier Fehlerformen, die HTTP-Rolle, die
-Namensauflösungstabelle, der `_ensure`-Kern, `verify_token` und die Paginierung. Für die
-übrigen Methoden nennt der Plan Signatur, HTTP-Aufruf und Rückgabe in Tabellenform; die
-Spec-Abschnitte 5.1, 5.2, 6 und 8 sind dafür die Quelle und beim Bauen offen zu halten.
-Jede Zeile der Methodentabellen ist in Spec-Abschnitt 8 belegt.
+The plan is written for an implementer without prior knowledge, but it is **not a
+complete code listing** like the Keycloak plan. Written out in full is what
+cannot be derived from the spec and where a mistake is expensive: `Diff`, the
+error classes and the mapping of the four error forms, the HTTP role, the
+name resolution table, the `_ensure` core, `verify_token` and the pagination. For the
+remaining methods the plan gives signature, HTTP call and return value in table form; the
+spec sections 5.1, 5.2, 6 and 8 are the source for that and should be kept open while building.
+Every row of the method tables is backed by spec section 8.
 
 ## Global Constraints
 
-- Laufzeit-Abhängigkeiten genau die im `cpanfile` aus Aufgabe 1; nichts aus `WWW-Keycloak`.
-- Ein Paket pro Datei, jede Datei unter `lib/` mit `# ABSTRACT:` (nur ASCII) und `our $VERSION = '0.001';`.
-- Kein `require` zum verzögerten Laden unter `lib/`.
-- `croak` statt `die` in Nicht-Klassen-Hilfscode; jeder Fehler der Dist ist ein Objekt aus `WWW::Authentik::Error::*`, geworfen mit `->throw`.
-- Das API-Token erscheint in keiner Fehlermeldung und in keinem Log.
-- 2 Leerzeichen Einrückung, keine abschließenden Kommas, `my ( $self, ... ) = @_;` als erste Zeile, Einzeiler mit `$_[0]->`.
-- `is => 'ro'` ist der Standard, `is => 'lazy'` mit `sub _build_x` für alles Nichttriviale, `namespace::autoclean` in jeder Klasse, Typen aus `Types::Standard`.
-- Es gibt keinen Realm: `base_url` ist Pflicht, `application` (Slug) und `token` sind optional; `oidc` ohne Slug und `api` ohne Token werfen beim ersten Zugriff `WWW::Authentik::Error::Validation`.
-- Jeder API-Pfad endet auf `/`; ohne Schrägstrich antwortet authentik 404 (Spec 8.1).
-- `ensure_*` vergleicht nur die übergebenen Schlüssel, schreibt nur bei Abweichung, löscht nie etwas und liefert `{ object, changed }` mit `changed` gleich `created`, `updated` oder leer. Die Abweichung von Keycloaks `{ id, changed }` ist gewollt (Spec 12) und steht in der POD der Fassade.
-- Schreibend ist `PATCH`, nie `PUT` (Spec 5.1).
-- authentik-Verhalten wird nicht aus dem Gedächtnis kodiert: Was `t/lib/FakeAuthentik.pm` tut, ist das in Spec-Abschnitt 8 beobachtete, an authentik 2026.8.3.
-- Jede `.t`-Datei beginnt mit `#!/usr/bin/env perl`, `use strict; use warnings; use Test::More;` und endet mit `done_testing;`. Tests laufen mit `prove -lr t`.
-- Die Live-Suite läuft nur mit `AUTHENTIK_LIVE_TEST=1`, `AUTHENTIK_URL` und `AUTHENTIK_TOKEN` und nie in einem parallelen Lauf.
-- Die Repos sind öffentlich: keine Hostnamen außer `127.0.0.1` und `example.org`, keine Tokens, keine internen Adressen in Dateien oder Commits.
+- Runtime dependencies exactly those in the `cpanfile` from task 1; nothing from `WWW-Keycloak`.
+- One package per file, every file under `lib/` with `# ABSTRACT:` (ASCII only) and `our $VERSION = '0.001';`.
+- No `require` for lazy loading under `lib/`.
+- `croak` instead of `die` in non-class helper code; every error of the dist is an object from `WWW::Authentik::Error::*`, thrown with `->throw`.
+- The API token appears in no error message and in no log.
+- 2 spaces indentation, no trailing commas, `my ( $self, ... ) = @_;` as the first line, one-liners with `$_[0]->`.
+- `is => 'ro'` is the default, `is => 'lazy'` with `sub _build_x` for anything non-trivial, `namespace::autoclean` in every class, types from `Types::Standard`.
+- There is no realm: `base_url` is required, `application` (slug) and `token` are optional; `oidc` without a slug and `api` without a token throw `WWW::Authentik::Error::Validation` on first access.
+- Every API path ends in `/`; without the slash authentik answers 404 (spec 8.1).
+- `ensure_*` compares only the given keys, writes only on a difference, never deletes anything and returns `{ object, changed }` with `changed` equal to `created`, `updated` or empty. The deviation from Keycloak's `{ id, changed }` is intended (spec 12) and is stated in the facade's POD.
+- Writing is `PATCH`, never `PUT` (spec 5.1).
+- authentik behavior is not coded from memory: what `t/lib/FakeAuthentik.pm` does is what was observed in spec section 8, on authentik 2026.8.3.
+- Every `.t` file starts with `#!/usr/bin/env perl`, `use strict; use warnings; use Test::More;` and ends with `done_testing;`. Tests run with `prove -lr t`.
+- The live suite runs only with `AUTHENTIK_LIVE_TEST=1`, `AUTHENTIK_URL` and `AUTHENTIK_TOKEN` and never in a parallel run.
+- The repos are public: no hostnames except `127.0.0.1` and `example.org`, no tokens, no internal addresses in files or commits.
 
 ## Review Focus
 
-Fünf Eingaben, die die Spec voraussetzt, die aber keine Aufgabe von sich aus prüfen würde.
-Jede bekommt ihren Test in der Aufgabe, der der Code gehört.
+Five inputs the spec assumes, but which no task would check on its own.
+Each gets its test in the task that owns the code.
 
-1. **Ein Name, der wie eine Kennung aussieht** — ein Provider namens `123`, ein Flow-Slug in UUID-Form. Erwartet: `provider => '123'` ist der PK 123, `provider_name => '123'` schlägt den Namen nach; beides zugleich ist ein Validation-Fehler. Tests `looks like an identifier` in `t/52-api-resolve.t` (Aufgabe 5).
-2. **Ein Setup, das zweimal läuft.** Erwartet: beim zweiten Mal kein einziger schreibender Aufruf, `changed` leer, insbesondere bei `property_mappings` (authentik sortiert um) und `redirect_uris` (authentik ergänzt `redirect_uri_type`). Tests `writes nothing on the second run` in `t/51-api-ensure.t` (Aufgabe 5) und `twice` in `t/90-live-authentik.t` (Aufgabe 6).
-3. **Ein Passwort im Setup und ein zweiter Lauf.** Erwartet: Das Passwort wird genau einmal gesetzt, beim Anlegen. Test `ensure_user sets the password only when it creates` in `t/51-api-ensure.t` (Aufgabe 5).
-4. **Eine Liste mit mehr Treffern, als auf eine Seite passen.** Erwartet: `list_*` liefert alle, folgt `pagination.next`, bricht bei `next: 0` ab und läuft bei einer kaputten Antwort (`next` zeigt zurück) nicht endlos. Test `pagination` in `t/50-api.t` (Aufgabe 4).
-5. **Ein Token, das nicht von dieser Application stammt, abgelaufen ist, mit fremdem Schlüssel, mit HMAC oder mit `alg: none` signiert ist.** Erwartet: abgelehnt mit Validation-Fehler; ein Token mit neu rotiertem Schlüssel dagegen angenommen, aber höchstens einmal pro `jwks_min_age` nachgeladen. Tests `verify_token` und `key rotation` in `t/60-oidc.t` (Aufgabe 3).
+1. **A name that looks like an identifier** — a provider named `123`, a flow slug in UUID form. Expected: `provider => '123'` is the PK 123, `provider_name => '123'` looks up the name; both at once is a validation error. Tests `looks like an identifier` in `t/52-api-resolve.t` (task 5).
+2. **A setup that runs twice.** Expected: on the second run not a single writing call, `changed` empty, in particular for `property_mappings` (authentik reorders) and `redirect_uris` (authentik adds `redirect_uri_type`). Tests `writes nothing on the second run` in `t/51-api-ensure.t` (task 5) and `twice` in `t/90-live-authentik.t` (task 6).
+3. **A password in the setup and a second run.** Expected: the password is set exactly once, on creation. Test `ensure_user sets the password only when it creates` in `t/51-api-ensure.t` (task 5).
+4. **A list with more matches than fit on one page.** Expected: `list_*` returns all of them, follows `pagination.next`, stops at `next: 0` and does not loop forever on a broken response (`next` points back). Test `pagination` in `t/50-api.t` (task 4).
+5. **A token that does not come from this application, has expired, is signed with a foreign key, with HMAC or with `alg: none`.** Expected: rejected with a validation error; a token with a newly rotated key, on the other hand, is accepted, but reloaded at most once per `jwks_min_age`. Tests `verify_token` and `key rotation` in `t/60-oidc.t` (task 3).
 
-## Dateien
+## Files
 
-| Datei | Verantwortung | Aufgabe |
+| File | Responsibility | Task |
 |---|---|---|
-| `cpanfile` | Abhängigkeiten | 1 |
-| `lib/WWW/Authentik/Diff.pm` | Vergleich ohne I/O, Listen als Mengen, ergänzte Defaults | 1 |
+| `cpanfile` | dependencies | 1 |
+| `lib/WWW/Authentik/Diff.pm` | comparison without I/O, lists as sets, added defaults | 1 |
 | `t/10-diff.t` | Diff | 1 |
-| `lib/WWW/Authentik/Error.pm`, `Error/Validation.pm`, `Error/Network.pm`, `Error/API.pm` | Fehlerhierarchie, vier Fehlerformen | 2 |
+| `lib/WWW/Authentik/Error.pm`, `Error/Validation.pm`, `Error/Network.pm`, `Error/API.pm` | error hierarchy, four error forms | 2 |
 | `lib/WWW/Authentik/Role/HTTP.pm` | `build_request`, `read_response`, `send_request` | 2 |
-| `t/lib/FakeAuthentik.pm` | nachgebautes authentik für die Unit-Tests | 2 |
-| `t/20-errors.t` | Fehlerformen und Prädikate | 2 |
-| `lib/WWW/Authentik/OIDC.pm` | Discovery, JWKS, `verify_token`, Token-Endpunkt | 3 |
-| `lib/WWW/Authentik.pm` | Fassade (der Stub wird ersetzt) | 3 |
-| `t/40-facade.t`, `t/60-oidc.t` | Fassade, OIDC | 3 |
-| `lib/WWW/Authentik/API.pm` (Transport, Paginierung, Grundoperationen) | API v3 | 4 |
-| `t/50-api.t` | Grundoperationen, Paginierung | 4 |
-| `lib/WWW/Authentik/API.pm` (Abschnitt `resolve` und `ensure`) | Namensauflösung, wiederholbare Methoden | 5 |
-| `t/51-api-ensure.t`, `t/52-api-resolve.t` | `ensure_*`, Auflösung | 5 |
-| `t/lib/AuthentikExecutor.pm`, `t/90-live-authentik.t` | Login per Flow-Executor, Live-Suite | 6 |
-| `README.md`, `Changes`, `CLAUDE.md`, `.claude/skills/www-authentik-core/SKILL.md`, `t/00-load.t` | Stand nachziehen | 6 |
+| `t/lib/FakeAuthentik.pm` | emulated authentik for the unit tests | 2 |
+| `t/20-errors.t` | error forms and predicates | 2 |
+| `lib/WWW/Authentik/OIDC.pm` | discovery, JWKS, `verify_token`, token endpoint | 3 |
+| `lib/WWW/Authentik.pm` | facade (the stub is replaced) | 3 |
+| `t/40-facade.t`, `t/60-oidc.t` | facade, OIDC | 3 |
+| `lib/WWW/Authentik/API.pm` (transport, pagination, basic operations) | API v3 | 4 |
+| `t/50-api.t` | basic operations, pagination | 4 |
+| `lib/WWW/Authentik/API.pm` (section `resolve` and `ensure`) | name resolution, repeatable methods | 5 |
+| `t/51-api-ensure.t`, `t/52-api-resolve.t` | `ensure_*`, resolution | 5 |
+| `t/lib/AuthentikExecutor.pm`, `t/90-live-authentik.t` | login via the flow executor, live suite | 6 |
+| `README.md`, `Changes`, `CLAUDE.md`, `.claude/skills/www-authentik-core/SKILL.md`, `t/00-load.t` | bring up to date | 6 |
 
-Reihenfolge: 1 → 2 → 3 → 4 → 5 → 6, jede baut auf der vorigen auf. Ein Commit je Aufgabe.
+Order: 1 → 2 → 3 → 4 → 5 → 6, each builds on the previous one. One commit per task.
 
 ---
 
-### Task 1: Abhängigkeiten und `WWW::Authentik::Diff`
+### Task 1: Dependencies and `WWW::Authentik::Diff`
 
 **Files:**
-- Modify: `cpanfile` (ganz ersetzen)
+- Modify: `cpanfile` (replace entirely)
 - Create: `lib/WWW/Authentik/Diff.pm`
 - Test: `t/10-diff.t`
 - Modify: `t/00-load.t`
 
 **Interfaces:**
-- Produces: `WWW::Authentik::Diff->changes( \%current, \%wanted )` → HashRef der zu schreibenden Schlüssel (verschachtelte Hashes zusammengeführt), leer wenn nichts zu tun ist; `->merge( \%current, \%wanted )` → tief zusammengeführter Hash; `->same( $a, $b )` → 1/0; `->list_defaults` → HashRef Feldname → Default-Hash, das authentik bei Listenelementen ergänzt.
+- Produces: `WWW::Authentik::Diff->changes( \%current, \%wanted )` → HashRef of the keys to write (nested hashes merged), empty when there is nothing to do; `->merge( \%current, \%wanted )` → deeply merged hash; `->same( $a, $b )` → 1/0; `->list_defaults` → HashRef field name → default hash that authentik adds to list elements.
 
-- [ ] **Step 1: `cpanfile` ersetzen und installieren**
+- [ ] **Step 1: Replace `cpanfile` and install**
 
 `cpanfile`:
 
@@ -108,28 +108,28 @@ on test => sub {
 };
 ```
 
-Run: `cpanm --installdeps .` — Expected: endet ohne Fehler.
+Run: `cpanm --installdeps .` — Expected: finishes without errors.
 
-- [ ] **Step 2: `t/10-diff.t` schreiben**
+- [ ] **Step 2: Write `t/10-diff.t`**
 
 Subtest `same`:
-- gleiche und verschiedene Strings; `3600` gegen `'3600'` gleich; `undef`/`undef` gleich; `undef` gegen `''` verschieden.
-- Booleans in jeder Schreibweise gleich: `\1`, `JSON::MaybeXS::true`, `'true'`, `1` untereinander; `\1` gegen `\0` verschieden; `'true'` gegen `'yes'` verschieden.
-- **Listen sind Mengen**: `[qw( a b )]` gleich `[qw( b a )]`; `[qw( a b )]` verschieden von `[qw( a b b )]`; Listen von Hashes als Menge: `[ { a => 1 }, { b => 2 } ]` gleich `[ { b => 2 }, { a => 1 } ]`; Schlüsselreihenfolge innerhalb eines Hashes egal.
-- leere Liste gleich leerer Liste, verschieden von `undef`.
+- equal and different strings; `3600` against `'3600'` equal; `undef`/`undef` equal; `undef` against `''` different.
+- Booleans equal in every spelling: `\1`, `JSON::MaybeXS::true`, `'true'`, `1` among each other; `\1` against `\0` different; `'true'` against `'yes'` different.
+- **Lists are sets**: `[qw( a b )]` equals `[qw( b a )]`; `[qw( a b )]` differs from `[qw( a b b )]`; lists of hashes as a set: `[ { a => 1 }, { b => 2 } ]` equals `[ { b => 2 }, { a => 1 } ]`; key order within a hash does not matter.
+- empty list equals empty list, differs from `undef`.
 
 Subtest `changes`:
-- nichts zu tun bei gleichem Zustand; ein Schlüssel der obersten Ebene; ein verschachtelter Hash kommt zusammengeführt zurück (`attributes`), ein schon passender verschachtelter Schlüssel ergibt nichts; eine Liste wird ersetzt; ein Schlüssel, den der aktuelle Zustand nicht hat; verschachtelter Hash, wo keiner war; Hash, wo ein Skalar war; `undef` als aktueller Zustand; der aktuelle Zustand wird nicht verändert.
-- `property_mappings` in anderer Reihenfolge ergibt **keine** Änderung.
-- `redirect_uris`: `[ { matching_mode => 'strict', url => 'https://a/cb' } ]` gegen den gelesenen Zustand `[ { matching_mode => 'strict', url => 'https://a/cb', redirect_uri_type => 'authorization' } ]` ergibt **keine** Änderung; eine andere URL ergibt eine.
+- nothing to do for an equal state; a top-level key; a nested hash comes back merged (`attributes`), an already matching nested key yields nothing; a list is replaced; a key the current state does not have; a nested hash where there was none; a hash where there was a scalar; `undef` as the current state; the current state is not modified.
+- `property_mappings` in a different order yields **no** change.
+- `redirect_uris`: `[ { matching_mode => 'strict', url => 'https://a/cb' } ]` against the read state `[ { matching_mode => 'strict', url => 'https://a/cb', redirect_uri_type => 'authorization' } ]` yields **no** change; a different URL yields one.
 
-Subtest `merge`: tief für Hashes, alles andere ersetzt; `undef` als aktueller Zustand.
+Subtest `merge`: deep for hashes, everything else replaced; `undef` as the current state.
 
-- [ ] **Step 3: Test laufen lassen, er muss scheitern**
+- [ ] **Step 3: Run the test, it must fail**
 
-Run: `prove -lr t/10-diff.t` — Expected: FAIL mit `Can't locate WWW/Authentik/Diff.pm in @INC`.
+Run: `prove -lr t/10-diff.t` — Expected: FAIL with `Can't locate WWW/Authentik/Diff.pm in @INC`.
 
-- [ ] **Step 4: `lib/WWW/Authentik/Diff.pm` schreiben**
+- [ ] **Step 4: Write `lib/WWW/Authentik/Diff.pm`**
 
 ```perl
 package WWW::Authentik::Diff;
@@ -223,25 +223,25 @@ sub _bool {
 1;
 ```
 
-POD nach `getty-perl-pod`: `=synopsis` mit `changes`/`merge`, `=description` mit den drei
-Regeln (nur die genannten Schlüssel, Listen als Mengen, von authentik ergänzte Defaults),
-`=method` für `changes`, `merge`, `same`, `with_defaults`, `list_defaults`.
+POD following `getty-perl-pod`: `=synopsis` with `changes`/`merge`, `=description` with the three
+rules (only the named keys, lists as sets, defaults added by authentik),
+`=method` for `changes`, `merge`, `same`, `with_defaults`, `list_defaults`.
 
-- [ ] **Step 5: Test laufen lassen**
+- [ ] **Step 5: Run the test**
 
 Run: `prove -lr t/10-diff.t` — Expected: PASS.
 
-- [ ] **Step 6: `t/00-load.t` ergänzen und committen**
+- [ ] **Step 6: Extend `t/00-load.t` and commit**
 
-`t/00-load.t` listet ab jetzt jedes gebaute Modul; in dieser Aufgabe `WWW::Authentik` und
+`t/00-load.t` from now on lists every built module; in this task `WWW::Authentik` and
 `WWW::Authentik::Diff`.
 
 Run: `prove -lr t` — Expected: PASS.
-Commit: Betreff `Add WWW::Authentik::Diff and the dependencies`, Rumpf eine Zeile je Datei.
+Commit: subject `Add WWW::Authentik::Diff and the dependencies`, body one line per file.
 
 ---
 
-### Task 2: Fehler, HTTP-Rolle und das nachgebaute authentik
+### Task 2: Errors, HTTP role and the emulated authentik
 
 **Files:**
 - Create: `lib/WWW/Authentik/Error.pm`, `lib/WWW/Authentik/Error/Validation.pm`, `lib/WWW/Authentik/Error/Network.pm`, `lib/WWW/Authentik/Error/API.pm`, `lib/WWW/Authentik/Role/HTTP.pm`, `t/lib/FakeAuthentik.pm`
@@ -249,64 +249,64 @@ Commit: Betreff `Add WWW::Authentik::Diff and the dependencies`, Rumpf eine Zeil
 - Modify: `t/00-load.t`
 
 **Interfaces:**
-- Consumes: nichts.
+- Consumes: nothing.
 - Produces:
-  - `WWW::Authentik::Error->new( message => $m )`, `->throw( message => $m )`, stringifiziert zu `message`.
-  - `WWW::Authentik::Error::API->new( message =>, http_status =>, api_message =>, field_errors =>, oauth_error =>, request_id => )` mit `is_not_found`, `is_forbidden`, `is_unauthorized`, `is_bad_request`.
-  - Rolle `WWW::Authentik::Role::HTTP` mit `json_codec`, `api_error_class`, `network_error_class`, `validation_error_class`, `build_request( $method, $url, %arg )`, `read_response( $response, $method, $url, %arg )`, `send_request( $method, $url, %arg )`. `%arg`: `bearer`, `json`, `form`, `basic` (ArrayRef `[ $user, $password ]`). Ergebnis von `read_response`/`send_request`: `{ status, data, location }`.
-  - `FakeAuthentik->new( %opt )` ist eine `LWP::UserAgent`-Unterklasse; `->base` liefert `http://ak.test`, `->token` das gültige API-Token, `->requests` die Liste `[ $method, $path, $body ]`, `->writes` die Zahl der schreibenden Aufrufe, `->reset_writes`, `->rotate_key`, `->add( $collection, \%rep )`, `->collection($name)`.
+  - `WWW::Authentik::Error->new( message => $m )`, `->throw( message => $m )`, stringifies to `message`.
+  - `WWW::Authentik::Error::API->new( message =>, http_status =>, api_message =>, field_errors =>, oauth_error =>, request_id => )` with `is_not_found`, `is_forbidden`, `is_unauthorized`, `is_bad_request`.
+  - Role `WWW::Authentik::Role::HTTP` with `json_codec`, `api_error_class`, `network_error_class`, `validation_error_class`, `build_request( $method, $url, %arg )`, `read_response( $response, $method, $url, %arg )`, `send_request( $method, $url, %arg )`. `%arg`: `bearer`, `json`, `form`, `basic` (ArrayRef `[ $user, $password ]`). Result of `read_response`/`send_request`: `{ status, data, location }`.
+  - `FakeAuthentik->new( %opt )` is an `LWP::UserAgent` subclass; `->base` returns `http://ak.test`, `->token` the valid API token, `->requests` the list `[ $method, $path, $body ]`, `->writes` the number of writing calls, `->reset_writes`, `->rotate_key`, `->add( $collection, \%rep )`, `->collection($name)`.
 
-- [ ] **Step 1: `t/lib/FakeAuthentik.pm` schreiben**
+- [ ] **Step 1: Write `t/lib/FakeAuthentik.pm`**
 
-Ein `LWP::UserAgent` mit überschriebenem `request`, der authentik 2026.8.3 so beantwortet,
-wie Spec-Abschnitt 8 es festhält. Umfang:
+An `LWP::UserAgent` with an overridden `request` that answers like authentik 2026.8.3,
+as spec section 8 records it. Scope:
 
-*Allgemein*
-- Ohne `Authorization` → `403 {"detail":"Authentication credentials were not provided."}`; mit unbekanntem Bearer → `403 {"detail":"Token invalid/expired"}`.
-- Pfad ohne abschließenden `/` unter `/api/v3/` → 404.
-- Jeder Aufruf wird in `requests` protokolliert; `PATCH`, `POST`, `PUT`, `DELETE` erhöhen `writes`.
-- Body nicht-JSON bei `POST`/`PATCH` → `400 {"detail":"JSON parse error - Input data was truncated"}`.
+*General*
+- Without `Authorization` → `403 {"detail":"Authentication credentials were not provided."}`; with an unknown bearer → `403 {"detail":"Token invalid/expired"}`.
+- Path without a trailing `/` under `/api/v3/` → 404.
+- Every call is logged in `requests`; `PATCH`, `POST`, `PUT`, `DELETE` increment `writes`.
+- Non-JSON body on `POST`/`PATCH` → `400 {"detail":"JSON parse error - Input data was truncated"}`.
 
-*Sammlungen* mit je einem Schlüsselfeld, einem PK-Feld und einer PK-Form:
+*Collections*, each with a key field, a PK field and a PK form:
 
-| Sammlung | Pfad | Schlüssel | PK-Feld | PK-Form |
+| Collection | Path | Key | PK field | PK form |
 |---|---|---|---|---|
-| `users` | `/api/v3/core/users/` | `username` | `pk` | Integer, ab 1 |
+| `users` | `/api/v3/core/users/` | `username` | `pk` | integer, from 1 |
 | `groups` | `/api/v3/core/groups/` | `name` | `pk` | UUID |
-| `tokens` | `/api/v3/core/tokens/` | `identifier` | `pk` | UUID, Pfad über `identifier` |
-| `applications` | `/api/v3/core/applications/` | `slug` | `pk` | UUID, Pfad über `slug` |
-| `providers` | `/api/v3/providers/oauth2/` | `name` | `pk` | Integer |
+| `tokens` | `/api/v3/core/tokens/` | `identifier` | `pk` | UUID, path via `identifier` |
+| `applications` | `/api/v3/core/applications/` | `slug` | `pk` | UUID, path via `slug` |
+| `providers` | `/api/v3/providers/oauth2/` | `name` | `pk` | integer |
 | `mappings` | `/api/v3/propertymappings/provider/scope/` | `name` | `pk` | UUID |
-| `flows` | `/api/v3/flows/instances/` | `slug` | `pk` | UUID, Pfad über `slug` |
-| `stages` | `/api/v3/stages/<type>/` und `/api/v3/stages/all/` | `name` | `pk` | UUID, Name über **alle** Typen eindeutig |
+| `flows` | `/api/v3/flows/instances/` | `slug` | `pk` | UUID, path via `slug` |
+| `stages` | `/api/v3/stages/<type>/` and `/api/v3/stages/all/` | `name` | `pk` | UUID, name unique across **all** types |
 | `bindings` | `/api/v3/flows/bindings/` | `(target, stage, order)` | `pk` | UUID |
 | `certificates` | `/api/v3/crypto/certificatekeypairs/` | `name` | `pk` | UUID |
 
-Verhalten je Sammlung:
-- `GET` Liste: `{"pagination":{...},"results":[...]}`, `page` und `page_size` beachtet, `next` ist die nächste Seitenzahl oder `0`, `count`, `current`, `total_pages`, `start_index`, `end_index`. Exakte Gleichheitsfilter über jeden Query-Parameter, der ein Feld ist; `?page=<zu groß>` → `404 {"detail":"Invalid page."}`.
-- `POST`: `201` mit dem ganzen Objekt, PK ergänzt, **kein** `Location`. Doppelter Schlüssel → `400 { "<schlüssel>": [ "… already exists." ] }`, beim Nutzer `["This field must be unique."]`. Fehlendes Pflichtfeld → `400 { "<feld>": ["This field is required."] }` (Provider: `authorization_flow`, `invalidation_flow`, `name`, `redirect_uris`; Application: `name`, `slug`).
-- `GET`/`PATCH`/`DELETE` Detail: `200`/`200`/`204`; unbekannt → `404 {"detail":"No <Model> matches the given query."}`; zweites `DELETE` → 404.
-- `PATCH` ersetzt `attributes` als Ganzes, ignoriert Lesefelder (`pk`, `uid`, `component`, `assigned_application_slug`, alles auf `_obj`) und unbekannte Felder still.
-- Provider: `client_id`/`client_secret` beim Anlegen erzeugt, `grant_types` Standard `[]`, `redirect_uris` bekommen `redirect_uri_type => 'authorization'`, `property_mappings` werden beim Zurückgeben umsortiert (umgedreht genügt), ungültiger `grant_types`-Wert → `400 {"grant_types":{"0":["\"x\" is not a valid choice."]}}`.
-- Application: `provider` schon vergeben → `400 {"provider":["Application with this provider already exists."]}`.
-- Binding: `(target, stage, order)` doppelt → `400 {"non_field_errors":["The fields target, stage, order must make a unique set."]}`.
-- Stage: `not_configured_action => 'configure'` ohne `configuration_stages` → `400 {"not_configured_action":["When \"Not configured action\" is set to \"Configure\", you must set a configuration stage."]}`.
-- `POST /api/v3/core/users/{pk}/set_password/` → `204`, merkt das Passwort in `passwords`.
+Behavior per collection:
+- `GET` list: `{"pagination":{...},"results":[...]}`, `page` and `page_size` respected, `next` is the next page number or `0`, `count`, `current`, `total_pages`, `start_index`, `end_index`. Exact equality filters over every query parameter that is a field; `?page=<too large>` → `404 {"detail":"Invalid page."}`.
+- `POST`: `201` with the whole object, PK added, **no** `Location`. Duplicate key → `400 { "<key>": [ "… already exists." ] }`, for the user `["This field must be unique."]`. Missing required field → `400 { "<field>": ["This field is required."] }` (provider: `authorization_flow`, `invalidation_flow`, `name`, `redirect_uris`; application: `name`, `slug`).
+- `GET`/`PATCH`/`DELETE` detail: `200`/`200`/`204`; unknown → `404 {"detail":"No <Model> matches the given query."}`; second `DELETE` → 404.
+- `PATCH` replaces `attributes` as a whole, silently ignores read-only fields (`pk`, `uid`, `component`, `assigned_application_slug`, everything ending in `_obj`) and unknown fields.
+- Provider: `client_id`/`client_secret` generated on creation, `grant_types` default `[]`, `redirect_uris` get `redirect_uri_type => 'authorization'`, `property_mappings` are reordered when returned (reversed is enough), invalid `grant_types` value → `400 {"grant_types":{"0":["\"x\" is not a valid choice."]}}`.
+- Application: `provider` already assigned → `400 {"provider":["Application with this provider already exists."]}`.
+- Binding: `(target, stage, order)` duplicate → `400 {"non_field_errors":["The fields target, stage, order must make a unique set."]}`.
+- Stage: `not_configured_action => 'configure'` without `configuration_stages` → `400 {"not_configured_action":["When \"Not configured action\" is set to \"Configure\", you must set a configuration stage."]}`.
+- `POST /api/v3/core/users/{pk}/set_password/` → `204`, remembers the password in `passwords`.
 - `POST /api/v3/core/tokens/{id}/set_key/` → `204`; `GET …/view_key/` → `200 {"key": …}`.
 - `GET /api/v3/admin/version/` → `200 {"version_current":"2026.8.3", …}`; `GET /api/v3/core/users/me/` → `200 {"user":{…}}`.
 - `PATCH /api/v3/stages/all/{uuid}/` → `405 {"detail":"Method \"PATCH\" not allowed."}`.
 
-*OIDC* unter `/application/o/`:
-- `GET /application/o/<slug>/.well-known/openid-configuration` → das in Spec 8.2 beobachtete Dokument mit `issuer` = `<base>/application/o/<slug>/`, allen Endpunkten, `claims_supported` mit `amr`, `acr`, `auth_time`; unbekannter Slug → 404.
-- `GET /application/o/<slug>/jwks/` → der öffentliche RSA-Schlüssel mit `kid`.
-- `POST /application/o/token/`: `client_credentials` (mit `client_secret` oder `username`/`password`), `refresh_token` (rotiert, altes danach ungültig), `authorization_code` (einmalig), `urn:ietf:params:oauth:grant-type:device_code` (erst `authorization_pending`, nach `->approve_device($user_code)` die Tokens). Falsches Secret → `400 invalid_grant`, unbekannter Client → `400 invalid_client`, unbekannter Grant → `400 unsupported_grant_type`, Teilmenge der Scopes beim Refresh → `400 invalid_scope`. Jede Fehlerantwort trägt `request_id`.
-- `GET`/`POST /application/o/userinfo/`: `200` mit den Claims, unbekanntes Token → `401` mit leerem Body und `WWW-Authenticate: error="invalid_token", error_description="…"`.
-- `POST /application/o/introspect/`: `200 {"active":true, …}` oder `200 {"active":false}` (auch bei falschem Secret).
-- `POST /application/o/revoke/`: `200 {}`, auch für Müll; falsches Secret → `401 invalid_client`.
+*OIDC* under `/application/o/`:
+- `GET /application/o/<slug>/.well-known/openid-configuration` → the document observed in spec 8.2 with `issuer` = `<base>/application/o/<slug>/`, all endpoints, `claims_supported` with `amr`, `acr`, `auth_time`; unknown slug → 404.
+- `GET /application/o/<slug>/jwks/` → the public RSA key with `kid`.
+- `POST /application/o/token/`: `client_credentials` (with `client_secret` or `username`/`password`), `refresh_token` (rotated, the old one invalid afterwards), `authorization_code` (single use), `urn:ietf:params:oauth:grant-type:device_code` (first `authorization_pending`, after `->approve_device($user_code)` the tokens). Wrong secret → `400 invalid_grant`, unknown client → `400 invalid_client`, unknown grant → `400 unsupported_grant_type`, subset of the scopes on refresh → `400 invalid_scope`. Every error response carries `request_id`.
+- `GET`/`POST /application/o/userinfo/`: `200` with the claims, unknown token → `401` with an empty body and `WWW-Authenticate: error="invalid_token", error_description="…"`.
+- `POST /application/o/introspect/`: `200 {"active":true, …}` or `200 {"active":false}` (also with a wrong secret).
+- `POST /application/o/revoke/`: `200 {}`, also for garbage; wrong secret → `401 invalid_client`.
 - `POST /application/o/device/` → `{device_code, user_code, verification_uri, verification_uri_complete, expires_in, interval}`.
-- Signiert wird mit einem erzeugten RSA-Schlüssel (`Crypt::PK::RSA`, 256 Byte); `->rotate_key` tauscht ihn und vergibt eine neue `kid`. `->sign( \%claims, %opt )` baut ein Token; `%opt` erlaubt `alg => 'none'`, `key => 'hmac'`, `exp`, `iss`, `kid`, damit `t/60-oidc.t` die abzulehnenden Fälle bauen kann.
+- Signing uses a generated RSA key (`Crypt::PK::RSA`, 256 bytes); `->rotate_key` swaps it and assigns a new `kid`. `->sign( \%claims, %opt )` builds a token; `%opt` allows `alg => 'none'`, `key => 'hmac'`, `exp`, `iss`, `kid`, so that `t/60-oidc.t` can build the cases to be rejected.
 
-- [ ] **Step 2: `t/20-errors.t` schreiben**
+- [ ] **Step 2: Write `t/20-errors.t`**
 
 ```perl
 #!/usr/bin/env perl
@@ -388,21 +388,21 @@ subtest 'no answer at all' => sub {
 done_testing;
 ```
 
-`$provider_pk` entsteht im Subtest `field errors` über `create_oauth2_provider` mit den vier
-Pflichtfeldern; die Zeile steht vor dem `my $nested`.
+`$provider_pk` is created in the subtest `field errors` via `create_oauth2_provider` with the four
+required fields; the line comes before the `my $nested`.
 
-- [ ] **Step 3: Test laufen lassen, er muss scheitern**
+- [ ] **Step 3: Run the test, it must fail**
 
-Run: `prove -lr t/20-errors.t` — Expected: FAIL, `WWW/Authentik/Error.pm` fehlt.
+Run: `prove -lr t/20-errors.t` — Expected: FAIL, `WWW/Authentik/Error.pm` is missing.
 
-- [ ] **Step 4: Die Fehlerklassen schreiben**
+- [ ] **Step 4: Write the error classes**
 
-`lib/WWW/Authentik/Error.pm` wie `WWW::Keycloak::Error`: Moo, `has message`, `overload '""'`,
-`sub throw { my ( $class, %arg ) = @_; die $class->new(%arg) }`, **kein** `namespace::autoclean`
-(es würde den Overload-Stub entfernen).
+`lib/WWW/Authentik/Error.pm` like `WWW::Keycloak::Error`: Moo, `has message`, `overload '""'`,
+`sub throw { my ( $class, %arg ) = @_; die $class->new(%arg) }`, **no** `namespace::autoclean`
+(it would remove the overload stub).
 
-`Error/Validation.pm` und `Error/Network.pm`: `use Moo; extends 'WWW::Authentik::Error';` und
-`$VERSION`, sonst nichts.
+`Error/Validation.pm` and `Error/Network.pm`: `use Moo; extends 'WWW::Authentik::Error';` and
+`$VERSION`, nothing else.
 
 `lib/WWW/Authentik/Error/API.pm`:
 
@@ -428,11 +428,11 @@ sub is_forbidden    { $_[0]->http_status == 403 ? 1 : 0 }
 sub is_not_found    { $_[0]->http_status == 404 ? 1 : 0 }
 ```
 
-POD: `=description` nennt die vier Fehlerformen aus Spec 7 und warum es kein `is_conflict`
-gibt (ein Duplikat ist 400 wie jeder Validierungsfehler); `=attr` für jedes Feld,
-`=method` für die vier Prädikate.
+POD: `=description` names the four error forms from spec 7 and why there is no `is_conflict`
+(a duplicate is 400 like any validation error); `=attr` for every field,
+`=method` for the four predicates.
 
-- [ ] **Step 5: `lib/WWW/Authentik/Role/HTTP.pm` schreiben**
+- [ ] **Step 5: Write `lib/WWW/Authentik/Role/HTTP.pm`**
 
 ```perl
 package WWW::Authentik::Role::HTTP;
@@ -537,91 +537,91 @@ sub send_request {
 1;
 ```
 
-POD: `=description` sagt, dass `build_request` und `read_response` getrennt vom Senden sind,
-damit `Net::Async::Authentik` sie mitbenutzt, und dass eine Antwort unter 400 als Erfolg
-gilt, weil authentik mit 302 antwortet, wo es weiterleitet. `=method` für jede Methode.
-Das Bearer-Token steht in keiner Fehlermeldung — die Meldung nennt nur Methode und URL.
+POD: `=description` says that `build_request` and `read_response` are separate from sending,
+so that `Net::Async::Authentik` can reuse them, and that a response below 400 counts
+as success, because authentik answers with 302 where it redirects. `=method` for every method.
+The bearer token appears in no error message — the message names only method and URL.
 
-- [ ] **Step 6: Test laufen lassen**
+- [ ] **Step 6: Run the test**
 
-Run: `prove -lr t/20-errors.t` — Expected: PASS. (Der Subtest `field errors` braucht
-`create_user` und `create_oauth2_provider` aus Aufgabe 4; bis dahin wird er mit
-`$fake`-Rohaufrufen über `$ak->api->call` geschrieben und in Aufgabe 4 auf die Methoden
-umgestellt.)
+Run: `prove -lr t/20-errors.t` — Expected: PASS. (The subtest `field errors` needs
+`create_user` and `create_oauth2_provider` from task 4; until then it is written with
+raw `$fake` calls via `$ak->api->call` and switched to the methods
+in task 4.)
 
-- [ ] **Step 7: `t/00-load.t` ergänzen, committen**
+- [ ] **Step 7: Extend `t/00-load.t`, commit**
 
 Run: `prove -lr t` — Expected: PASS.
-Commit: Betreff `Add the error classes, the HTTP role and the fake authentik`.
+Commit: subject `Add the error classes, the HTTP role and the fake authentik`.
 
 ---
 
-### Task 3: OIDC und die Fassade
+### Task 3: OIDC and the facade
 
 **Files:**
 - Create: `lib/WWW/Authentik/OIDC.pm`
-- Modify: `lib/WWW/Authentik.pm` (Stub ersetzen)
+- Modify: `lib/WWW/Authentik.pm` (replace the stub)
 - Test: `t/40-facade.t`, `t/60-oidc.t`
 - Modify: `t/00-load.t`
 
 **Interfaces:**
-- Consumes: `WWW::Authentik::Role::HTTP`, die Fehlerklassen, `FakeAuthentik`.
+- Consumes: `WWW::Authentik::Role::HTTP`, the error classes, `FakeAuthentik`.
 - Produces:
-  - `WWW::Authentik->new( base_url =>, application =>, token =>, ua => )` mit `->oidc`, `->api`, `->issuer`, `->application_url`, `->api_url`, `->for_application($slug)`.
-  - `WWW::Authentik::OIDC->new( application_url =>, ua =>, algorithms =>, jwks_min_age =>, now => )` mit den Methoden der Tabelle unten.
+  - `WWW::Authentik->new( base_url =>, application =>, token =>, ua => )` with `->oidc`, `->api`, `->issuer`, `->application_url`, `->api_url`, `->for_application($slug)`.
+  - `WWW::Authentik::OIDC->new( application_url =>, ua =>, algorithms =>, jwks_min_age =>, now => )` with the methods of the table below.
 
-- [ ] **Step 1: `t/40-facade.t` schreiben**
+- [ ] **Step 1: Write `t/40-facade.t`**
 
-- `base_url` fehlt oder leer → `WWW::Authentik::Error::Validation` beim Bauen.
-- Ein abschließender `/` an `base_url` wird entfernt.
-- `issuer` ist `<base_url>/application/o/<slug>/`, `application_url` ohne abschließenden `/`, `api_url` ist `<base_url>/api/v3`.
-- Ein Slug wird URI-kodiert (`for_application('a b')`).
-- `oidc` ohne `application` → Validation-Fehler, mit → `WWW::Authentik::OIDC`.
-- `api` ohne `token` → Validation-Fehler, mit → `WWW::Authentik::API`.
-- `for_application('other')` liefert eine neue Fassade mit demselben `ua`-Objekt (`is( $a->ua, $b->ua )`) und demselben Token, aber anderem Slug.
-- Die Standard-`ua` folgt keinen Redirects: `is( WWW::Authentik->new( base_url => 'http://x' )->ua->max_redirect, 0 )`.
-- `ua` ist injizierbar und wird von `oidc` und `api` geteilt.
+- `base_url` missing or empty → `WWW::Authentik::Error::Validation` on construction.
+- A trailing `/` on `base_url` is removed.
+- `issuer` is `<base_url>/application/o/<slug>/`, `application_url` without a trailing `/`, `api_url` is `<base_url>/api/v3`.
+- A slug is URI-encoded (`for_application('a b')`).
+- `oidc` without `application` → validation error, with it → `WWW::Authentik::OIDC`.
+- `api` without `token` → validation error, with it → `WWW::Authentik::API`.
+- `for_application('other')` returns a new facade with the same `ua` object (`is( $a->ua, $b->ua )`) and the same token, but a different slug.
+- The default `ua` follows no redirects: `is( WWW::Authentik->new( base_url => 'http://x' )->ua->max_redirect, 0 )`.
+- `ua` is injectable and shared by `oidc` and `api`.
 
-- [ ] **Step 2: `t/60-oidc.t` schreiben**
+- [ ] **Step 2: Write `t/60-oidc.t`**
 
-Subtest `discovery and endpoints`: `discovery` holt einmal und merkt sich (zweiter Aufruf
-schickt keine zweite Anfrage, geprüft über `$fake->requests`); `issuer` kommt aus dem
-Dokument; `token_endpoint`, `userinfo_endpoint`, `introspection_endpoint`,
+Subtest `discovery and endpoints`: `discovery` fetches once and remembers (a second call
+sends no second request, checked via `$fake->requests`); `issuer` comes from the
+document; `token_endpoint`, `userinfo_endpoint`, `introspection_endpoint`,
 `revocation_endpoint`, `end_session_endpoint`, `device_endpoint`, `authorization_endpoint`,
-`jwks_uri`; ein fehlender Name → Validation-Fehler, der ihn benennt.
+`jwks_uri`; a missing name → validation error that names it.
 
 Subtest `verify_token`:
-- ein frisch signiertes Token wird angenommen, die Claims kommen zurück;
-- falscher `iss` → abgelehnt; abgelaufen → abgelehnt; `alg: none` → abgelehnt; HMAC (`HS256`) → abgelehnt; fremder RSA-Schlüssel → abgelehnt; jedes Mal `WWW::Authentik::Error::Validation` mit einer Meldung, die den Grund nennt;
-- `audience => 'other'` → abgelehnt, `audience => <client_id>` → angenommen;
-- `type => 'access'` nimmt ein Token mit `scope` und lehnt eines ohne ab; `type => 'id'` umgekehrt; ohne `type` wird nichts geprüft;
-- `verify_token(undef)` und `verify_token('')` → Validation-Fehler.
+- a freshly signed token is accepted, the claims come back;
+- wrong `iss` → rejected; expired → rejected; `alg: none` → rejected; HMAC (`HS256`) → rejected; foreign RSA key → rejected; each time `WWW::Authentik::Error::Validation` with a message that names the reason;
+- `audience => 'other'` → rejected, `audience => <client_id>` → accepted;
+- `type => 'access'` accepts a token with `scope` and rejects one without; `type => 'id'` the other way round; without `type` nothing is checked;
+- `verify_token(undef)` and `verify_token('')` → validation error.
 
-Subtest `key rotation`: nach `$fake->rotate_key` wird ein mit dem neuen Schlüssel signiertes
-Token angenommen (JWKS werden genau einmal nachgeladen); ein zweites Token mit unbekannter
-`kid` innerhalb von `jwks_min_age` löst **keine** weitere JWKS-Anfrage aus (gezählt über
-`$fake->requests`); mit vorgestellter Uhr (`now`) danach schon.
+Subtest `key rotation`: after `$fake->rotate_key` a token signed with the new key
+is accepted (JWKS are reloaded exactly once); a second token with an unknown
+`kid` within `jwks_min_age` triggers **no** further JWKS request (counted via
+`$fake->requests`); with the clock moved forward (`now`) afterwards it does.
 
-Subtest `the token endpoint`: `client_credentials_token` mit Secret und mit
-`username`/`password`; `exchange_authorization_code`; `refresh_token` (neues Refresh-Token,
-altes danach `invalid_grant`); `device_authorization` (`verification_uri_complete` enthält
-den `user_code`); `device_token` vor der Bestätigung wirft mit
-`oauth_error eq 'authorization_pending'`, nach `$fake->approve_device` liefert es Tokens;
-`userinfo`; `introspect` (`active`); `revoke` (danach `introspect` `active` falsch); ein
-fehlender `client_id` → Validation-Fehler.
+Subtest `the token endpoint`: `client_credentials_token` with secret and with
+`username`/`password`; `exchange_authorization_code`; `refresh_token` (new refresh token,
+the old one `invalid_grant` afterwards); `device_authorization` (`verification_uri_complete` contains
+the `user_code`); `device_token` before confirmation throws with
+`oauth_error eq 'authorization_pending'`, after `$fake->approve_device` it returns tokens;
+`userinfo`; `introspect` (`active`); `revoke` (afterwards `introspect` `active` false); a
+missing `client_id` → validation error.
 
-Subtest `authorization_url`: enthält `response_type=code`, den `client_id`, den kodierten
-`redirect_uri`, `scope`, `state`, `nonce`; zusätzliche Parameter werden angehängt; der URL
-zeigt auf `authorization_endpoint`.
+Subtest `authorization_url`: contains `response_type=code`, the `client_id`, the encoded
+`redirect_uri`, `scope`, `state`, `nonce`; additional parameters are appended; the URL
+points to `authorization_endpoint`.
 
-- [ ] **Step 3: Tests laufen lassen, sie müssen scheitern**
+- [ ] **Step 3: Run the tests, they must fail**
 
 Run: `prove -lr t/40-facade.t t/60-oidc.t` — Expected: FAIL.
 
-- [ ] **Step 4: `lib/WWW/Authentik/OIDC.pm` schreiben**
+- [ ] **Step 4: Write `lib/WWW/Authentik/OIDC.pm`**
 
-Attribute: `application_url` (Str, required), `ua` (InstanceOf LWP::UserAgent, required),
-`algorithms` (ArrayRef[Str], Standard `RS256 RS384 RS512 PS256 PS384 PS512 ES256 ES384 ES512`),
+Attributes: `application_url` (Str, required), `ua` (InstanceOf LWP::UserAgent, required),
+`algorithms` (ArrayRef[Str], default `RS256 RS384 RS512 PS256 PS384 PS512 ES256 ES384 ES512`),
 `jwks_min_age` (Int, 60), `now` (CodeRef, `sub { time }`), `discovery` (lazy, `init_arg undef`),
 `_jwks`, `_jwks_fetched` (rw, `init_arg undef`).
 
@@ -653,7 +653,7 @@ sub device_endpoint         { $_[0]->endpoint('device_authorization_endpoint') }
 sub jwks_uri                { $_[0]->endpoint('jwks_uri') }
 ```
 
-`jwks( force_refresh => 1 )` wie bei Keycloak.
+`jwks( force_refresh => 1 )` as with Keycloak.
 
 ```perl
 sub verify_token {
@@ -689,11 +689,11 @@ sub verify_token {
 }
 ```
 
-Die `=method verify_token`-POD sagt wörtlich, dass `type` eine **Heuristik** ist: authentik
-setzt kein `typ` in den Header, beide Tokenarten sind `RS256`-JWTs, und unterschieden wird
-am Claim `scope` (Spec 6.1). Ohne `type` wird die Tokenart nicht geprüft.
+The `=method verify_token` POD says literally that `type` is a **heuristic**: authentik
+sets no `typ` in the header, both token kinds are `RS256` JWTs, and they are told apart
+by the claim `scope` (spec 6.1). Without `type` the token kind is not checked.
 
-Token-Endpunkt:
+Token endpoint:
 
 ```perl
 sub client_credentials_token { my ( $self, %arg ) = @_; $self->_grant( client_credentials => [qw( scope username password )], %arg ) }
@@ -715,10 +715,10 @@ sub _token_call {
 }
 ```
 
-`userinfo($access_token)` ist `GET` auf `userinfo_endpoint` mit Bearer.
-`introspect($token, %client)` und `revoke($token, %client)` gehen auf ihre Endpunkte mit
-`token` (und `token_type_hint`, wenn gegeben); `revoke` liefert 1.
-`device_authorization( client_id =>, scope => )` ruft `_token_call` auf `device_endpoint`.
+`userinfo($access_token)` is `GET` on `userinfo_endpoint` with bearer.
+`introspect($token, %client)` and `revoke($token, %client)` go to their endpoints with
+`token` (and `token_type_hint`, if given); `revoke` returns 1.
+`device_authorization( client_id =>, scope => )` calls `_token_call` on `device_endpoint`.
 
 ```perl
 sub authorization_url {
@@ -734,7 +734,7 @@ sub authorization_url {
 }
 ```
 
-- [ ] **Step 5: `lib/WWW/Authentik.pm` ersetzen**
+- [ ] **Step 5: Replace `lib/WWW/Authentik.pm`**
 
 ```perl
 package WWW::Authentik;
@@ -815,73 +815,73 @@ sub for_application {
 1;
 ```
 
-POD: `=synopsis` mit beiden Seiten; `=description` nennt, dass es keinen Realm gibt, dass
-die API instanzweit und OIDC je Application liegt, dass das API-Token langlebig ist und
-nicht erneuert wird — **und** den Unterschied für Umsteiger von `WWW::Keycloak`:
-`ensure_*` liefert `{ object, changed }` statt `{ id, changed }`, und `create_*`/`update_*`
-liefern die Repräsentation statt einer ID, weil authentik keine einheitliche Kennung hat
-(Slug, Integer-PK, UUID, Identifier) und beim Anlegen das ganze Objekt zurückgibt.
-`=attr`/`=method` für jedes Attribut und jede Methode; `issuer` sagt, dass es die
-Adressform ist (`issuer_mode: per_provider`) und dass `WWW::Authentik::OIDC->issuer` der
-maßgebliche Wert aus dem Discovery-Dokument ist.
+POD: `=synopsis` with both sides; `=description` states that there is no realm, that
+the API is instance-wide and OIDC per application, that the API token is long-lived and
+is not renewed — **and** the difference for people switching from `WWW::Keycloak`:
+`ensure_*` returns `{ object, changed }` instead of `{ id, changed }`, and `create_*`/`update_*`
+return the representation instead of an ID, because authentik has no uniform identifier
+(slug, integer PK, UUID, identifier) and returns the whole object on creation.
+`=attr`/`=method` for every attribute and every method; `issuer` says that it is the
+address form (`issuer_mode: per_provider`) and that `WWW::Authentik::OIDC->issuer` is the
+authoritative value from the discovery document.
 
-- [ ] **Step 6: Tests laufen lassen, `t/00-load.t` ergänzen, committen**
+- [ ] **Step 6: Run the tests, extend `t/00-load.t`, commit**
 
 Run: `prove -lr t` — Expected: PASS.
-Commit: Betreff `Add the OIDC client and the facade`.
+Commit: subject `Add the OIDC client and the facade`.
 
 ---
 
-### Task 4: `WWW::Authentik::API` — Transport, Paginierung, Grundoperationen
+### Task 4: `WWW::Authentik::API` — transport, pagination, basic operations
 
 **Files:**
 - Create: `lib/WWW/Authentik/API.pm`
 - Test: `t/50-api.t`
-- Modify: `t/00-load.t`, `t/20-errors.t` (Rohaufrufe auf die Methoden umstellen)
+- Modify: `t/00-load.t`, `t/20-errors.t` (switch raw calls to the methods)
 
 **Interfaces:**
-- Consumes: `WWW::Authentik::Role::HTTP`, die Fehlerklassen.
-- Produces: `WWW::Authentik::API->new( base_url =>, token =>, ua => )` mit
+- Consumes: `WWW::Authentik::Role::HTTP`, the error classes.
+- Produces: `WWW::Authentik::API->new( base_url =>, token =>, ua => )` with
   `call( $method, $path, \%body )` → `{ status, data, location }`,
-  `_paged( $path, %query )` → ArrayRef aller Treffer, und den Methoden der Tabelle.
+  `_paged( $path, %query )` → ArrayRef of all matches, and the methods of the table.
   `diff_class` → `'WWW::Authentik::Diff'`.
 
-- [ ] **Step 1: `t/50-api.t` schreiben**
+- [ ] **Step 1: Write `t/50-api.t`**
 
 Subtest `transport`:
-- `call( GET => '/core/users/' )` baut `http://ak.test/api/v3/core/users/` und schickt den Bearer;
-- ein Pfad ohne führenden `/` wird ergänzt, ein fehlender abschließender `/` wird **nicht** ergänzt (die Methoden setzen ihn; ein roher Aufruf bekommt, was er bestellt, und authentik antwortet dann 404 — der Test prüft genau das);
-- ohne Token wirft schon `WWW::Authentik->new(...)->api` (Aufgabe 3).
+- `call( GET => '/core/users/' )` builds `http://ak.test/api/v3/core/users/` and sends the bearer;
+- a path without a leading `/` gets one, a missing trailing `/` is **not** added (the methods set it; a raw call gets what it ordered, and authentik then answers 404 — the test checks exactly that);
+- without a token `WWW::Authentik->new(...)->api` already throws (task 3).
 
 Subtest `pagination`:
-- 25 Nutzer im Fake, `page_size => 10` → `list_users` liefert 25 in einem Aufruf des Aufrufers und drei HTTP-Anfragen;
-- `pagination.next` gleich 0 beendet; eine leere Liste ergibt `[]`;
-- **eine kaputte Antwort, deren `next` auf eine schon geholte Seite zeigt, bricht ab statt endlos zu laufen** (`$fake->break_pagination` lässt `next` immer auf 1 zeigen; erwartet: höchstens so viele Anfragen wie `total_pages`, dann Rückgabe).
+- 25 users in the fake, `page_size => 10` → `list_users` returns 25 in one call by the caller and three HTTP requests;
+- `pagination.next` equal to 0 ends; an empty list yields `[]`;
+- **a broken response whose `next` points to a page already fetched stops instead of looping forever** (`$fake->break_pagination` makes `next` always point to 1; expected: at most as many requests as `total_pages`, then return).
 
-Subtest `users`: `create_user`, `find_user` (exakt, groß/klein unterscheidend: `Probe-Bob`
-findet nicht `probe-bob`), `get_user`, `update_user` (PATCH, `attributes` ersetzt),
-`set_password`, `delete_user`, `delete_user` ein zweites Mal wirft `is_not_found`,
-`create_service_account` liefert `token`.
+Subtest `users`: `create_user`, `find_user` (exact, case-sensitive: `Probe-Bob`
+does not find `probe-bob`), `get_user`, `update_user` (PATCH, `attributes` replaced),
+`set_password`, `delete_user`, `delete_user` a second time throws `is_not_found`,
+`create_service_account` returns `token`.
 
-Subtest `applications and providers`: `create_oauth2_provider` ohne Pflichtfelder wirft mit
-`field_errors` für alle vier; vollständig angelegt kommt `client_id`, `client_secret`,
-`grant_types => []` zurück; `find_oauth2_provider` über den Namen; `create_application` mit
-`provider`; `find_application` über den Slug; ein zweiter Provider an derselben Application
-wirft; `provider_setup_urls`.
+Subtest `applications and providers`: `create_oauth2_provider` without required fields throws with
+`field_errors` for all four; fully created, `client_id`, `client_secret`,
+`grant_types => []` come back; `find_oauth2_provider` by name; `create_application` with
+`provider`; `find_application` by slug; a second provider on the same application
+throws; `provider_setup_urls`.
 
-Subtest `the rest`: je ein Durchlauf `create`/`find`/`update`/`delete` für Gruppen,
-Scope-Mappings, Flows, Stages (`password`), Bindings, Tokens (mit `view_token_key` und
-`set_token_key`); `list_stages` liest über `/stages/all/`, `update_stage` über den
-typisierten Pfad; `update_stage( all => ... )` ist ein Validation-Fehler, weil `/stages/all/`
-nur lesen kann.
+Subtest `the rest`: one `create`/`find`/`update`/`delete` pass each for groups,
+scope mappings, flows, stages (`password`), bindings, tokens (with `view_token_key` and
+`set_token_key`); `list_stages` reads via `/stages/all/`, `update_stage` via the
+typed path; `update_stage( all => ... )` is a validation error, because `/stages/all/`
+can only read.
 
 Subtest `instance`: `version`, `config`, `settings`, `me`.
 
-- [ ] **Step 2: Test laufen lassen, er muss scheitern**
+- [ ] **Step 2: Run the test, it must fail**
 
-Run: `prove -lr t/50-api.t` — Expected: FAIL, `WWW/Authentik/API.pm` fehlt.
+Run: `prove -lr t/50-api.t` — Expected: FAIL, `WWW/Authentik/API.pm` is missing.
 
-- [ ] **Step 3: Den Transportteil schreiben**
+- [ ] **Step 3: Write the transport part**
 
 ```perl
 package WWW::Authentik::API;
@@ -955,14 +955,14 @@ sub _find_one {
 }
 ```
 
-`%seen` ist der Abbruch gegen eine Antwort, deren `next` zurückzeigt (Review Focus 4).
+`%seen` is the stop against a response whose `next` points back (Review Focus 4).
 
-- [ ] **Step 4: Die Grundoperationen schreiben**
+- [ ] **Step 4: Write the basic operations**
 
-Jede Zeile ist ein Einzeiler oder ein kurzer Block nach demselben Muster. Pfade und
-Verhalten aus Spec 5.1 und 8.1.
+Each row is a one-liner or a short block following the same pattern. Paths and
+behavior from spec 5.1 and 8.1.
 
-| Methode | Aufruf |
+| Method | Call |
 |---|---|
 | `version` | `GET /admin/version/` |
 | `config` | `GET /root/config/` |
@@ -971,67 +971,67 @@ Verhalten aus Spec 5.1 und 8.1.
 | `list_users(%q)` | `_paged('/core/users/', %q)` |
 | `find_user($username)` | `_find_one( list_users( username => $u ), 'username', $u )` |
 | `get_user($pk)` | `GET /core/users/{pk}/` |
-| `create_user(\%rep)` | `POST /core/users/` → Objekt |
-| `update_user($pk, \%c)` | `PATCH /core/users/{pk}/` → Objekt |
+| `create_user(\%rep)` | `POST /core/users/` → object |
+| `update_user($pk, \%c)` | `PATCH /core/users/{pk}/` → object |
 | `delete_user($pk)` | `DELETE /core/users/{pk}/` → 1 |
 | `set_password($pk, $pw)` | `POST /core/users/{pk}/set_password/` `{password}` → 1 |
-| `create_service_account(name =>, %opt)` | `POST /core/users/service_account/` → Objekt mit `token` |
-| `list_authenticators($pk)` | `GET /authenticators/admin/all/?user={pk}` (liefert eine nackte Liste, keine Paginierung) |
+| `create_service_account(name =>, %opt)` | `POST /core/users/service_account/` → object with `token` |
+| `list_authenticators($pk)` | `GET /authenticators/admin/all/?user={pk}` (returns a bare list, no pagination) |
 | `list_groups`, `find_group($name)`, `get_group($uuid)`, `create_group`, `update_group`, `delete_group` | `/core/groups/` |
 | `add_user_to_group($uuid, $pk)`, `remove_user_from_group($uuid, $pk)` | `POST …/add_user/`, `…/remove_user/` `{pk}` → 1 |
-| `list_tokens`, `get_token($id)`, `create_token`, `update_token`, `delete_token` | `/core/tokens/`, Detailpfad über `identifier` |
+| `list_tokens`, `get_token($id)`, `create_token`, `update_token`, `delete_token` | `/core/tokens/`, detail path via `identifier` |
 | `view_token_key($id)` | `GET /core/tokens/{id}/view_key/` → `{key}` |
 | `set_token_key($id, $key)` | `POST /core/tokens/{id}/set_key/` → 1 |
-| `list_applications`, `find_application($slug)`, `create_application`, `update_application($slug, \%c)`, `delete_application($slug)` | `/core/applications/`, Detailpfad über `slug`; `find_application` fängt die 404 über `_missing` |
+| `list_applications`, `find_application($slug)`, `create_application`, `update_application($slug, \%c)`, `delete_application($slug)` | `/core/applications/`, detail path via `slug`; `find_application` catches the 404 via `_missing` |
 | `check_access($slug, %opt)` | `GET /core/applications/{slug}/check_access/` |
 | `list_oauth2_providers`, `find_oauth2_provider($name)`, `get_oauth2_provider($pk)`, `create_oauth2_provider`, `update_oauth2_provider`, `delete_oauth2_provider` | `/providers/oauth2/` |
 | `provider_setup_urls($pk)` | `GET /providers/oauth2/{pk}/setup_urls/` |
 | `preview_user($pk, $user_pk)` | `GET /providers/oauth2/{pk}/preview_user/?for_user={user_pk}` |
 | `list_scope_mappings`, `find_scope_mapping($name)`, `create_scope_mapping`, `update_scope_mapping`, `delete_scope_mapping` | `/propertymappings/provider/scope/` |
-| `find_scope_mappings_by_scope(@names)` | eine Liste je Name über `?scope_name=`, Reihenfolge der Namen beibehalten; ein Name ohne Treffer → Validation-Fehler, der ihn benennt |
+| `find_scope_mappings_by_scope(@names)` | one list per name via `?scope_name=`, order of the names kept; a name without a match → validation error that names it |
 | `test_property_mapping($uuid, %arg)` | `POST /propertymappings/all/{uuid}/test/` |
-| `list_flows`, `find_flow($slug)`, `create_flow`, `update_flow($slug, \%c)`, `delete_flow($slug)` | `/flows/instances/`, Detailpfad über `slug` |
-| `export_flow($slug)` | `GET /flows/instances/{slug}/export/`; die Antwort ist YAML, kein JSON — der rohe Rumpf wird als String zurückgegeben |
+| `list_flows`, `find_flow($slug)`, `create_flow`, `update_flow($slug, \%c)`, `delete_flow($slug)` | `/flows/instances/`, detail path via `slug` |
+| `export_flow($slug)` | `GET /flows/instances/{slug}/export/`; the response is YAML, not JSON — the raw body is returned as a string |
 | `stage_types` | `GET /stages/all/types/` |
 | `list_stages(%q)` | `_paged('/stages/all/', %q)` |
-| `find_stage($name)` | über `list_stages`, `name` ist über alle Typen eindeutig |
-| `get_stage($type, $uuid)`, `create_stage($type, \%rep)`, `update_stage($type, $uuid, \%c)`, `delete_stage($type, $uuid)` | `/stages/{type}/…`; `$type` gleich `all` → Validation-Fehler („/stages/all/ can only be read“) |
+| `find_stage($name)` | via `list_stages`, `name` is unique across all types |
+| `get_stage($type, $uuid)`, `create_stage($type, \%rep)`, `update_stage($type, $uuid, \%c)`, `delete_stage($type, $uuid)` | `/stages/{type}/…`; `$type` equal to `all` → validation error ("/stages/all/ can only be read") |
 | `list_bindings(%q)`, `create_binding`, `update_binding($uuid, \%c)`, `delete_binding($uuid)` | `/flows/bindings/`; `list_bindings( target => $uuid )` |
 | `list_brands`, `current_brand`, `update_brand($uuid, \%c)` | `/core/brands/`, `/core/brands/current/` |
 | `list_certificates`, `find_certificate($name)` | `/crypto/certificatekeypairs/` |
 | `list_blueprints`, `get_blueprint($uuid)`, `create_blueprint`, `apply_blueprint($uuid)`, `delete_blueprint($uuid)` | `/managed/blueprints/` |
 
-`export_flow` braucht einen eigenen Weg am JSON-Decoder vorbei: `send_request` liefert
-`data => undef`, weil die Antwort YAML ist. Die Methode holt den rohen Rumpf über einen
-eigenen `build_request`/`$self->ua->request`-Aufruf und gibt `$response->decoded_content`
-zurück; bei Status ab 400 geht sie durch `read_response`, damit der Fehler dieselbe Form hat.
+`export_flow` needs its own way around the JSON decoder: `send_request` returns
+`data => undef`, because the response is YAML. The method fetches the raw body via its
+own `build_request`/`$self->ua->request` call and returns `$response->decoded_content`;
+at status 400 and above it goes through `read_response`, so the error has the same form.
 
-Jede Methode bekommt ihre `=method`-POD mit einer Aufrufzeile und dem, was sie zurückgibt.
+Every method gets its `=method` POD with a call line and what it returns.
 
-- [ ] **Step 5: Tests laufen lassen, `t/20-errors.t` umstellen**
+- [ ] **Step 5: Run the tests, switch `t/20-errors.t`**
 
 Run: `prove -lr t` — Expected: PASS.
 
-- [ ] **Step 6: `t/00-load.t` ergänzen, committen**
+- [ ] **Step 6: Extend `t/00-load.t`, commit**
 
-Commit: Betreff `Add the API v3 client with the basic operations`.
+Commit: subject `Add the API v3 client with the basic operations`.
 
 ---
 
-### Task 5: Namensauflösung und `ensure_*`
+### Task 5: Name resolution and `ensure_*`
 
 **Files:**
-- Modify: `lib/WWW/Authentik/API.pm` (Abschnitte `resolve` und `ensure` anfügen)
+- Modify: `lib/WWW/Authentik/API.pm` (append the sections `resolve` and `ensure`)
 - Test: `t/51-api-ensure.t`, `t/52-api-resolve.t`
 
 **Interfaces:**
-- Consumes: alles aus Aufgabe 4, `WWW::Authentik::Diff`.
-- Produces: `resolvable_fields` → HashRef; `resolve( \%rep )` → neuer Hash mit aufgelösten
-  Feldern; `ensure_application`, `ensure_oauth2_provider`, `ensure_scope_mapping`,
+- Consumes: everything from task 4, `WWW::Authentik::Diff`.
+- Produces: `resolvable_fields` → HashRef; `resolve( \%rep )` → new hash with resolved
+  fields; `ensure_application`, `ensure_oauth2_provider`, `ensure_scope_mapping`,
   `ensure_user`, `ensure_group`, `ensure_token`, `ensure_flow`, `ensure_stage($type, %rep)`,
-  `ensure_binding(%arg)`, jede liefert `{ object => \%rep, changed => 'created'|'updated'|'' }`.
+  `ensure_binding(%arg)`, each returns `{ object => \%rep, changed => 'created'|'updated'|'' }`.
 
-- [ ] **Step 1: `t/52-api-resolve.t` schreiben**
+- [ ] **Step 1: Write `t/52-api-resolve.t`**
 
 ```perl
 subtest 'looks like an identifier' => sub {
@@ -1070,27 +1070,27 @@ subtest 'lists and scopes' => sub {
 };
 ```
 
-- [ ] **Step 2: `t/51-api-ensure.t` schreiben**
+- [ ] **Step 2: Write `t/51-api-ensure.t`**
 
-Für jede `ensure_*`-Methode:
-- erster Lauf `created`, `object` trägt die Kennung;
-- zweiter Lauf mit denselben Argumenten: `changed` leer **und `$fake->writes` unverändert** (die Zählung ist der eigentliche Test, Review Focus 2);
-- ein geänderter Schlüssel: `updated`, genau ein schreibender Aufruf, die nicht genannten Felder bleiben.
+For every `ensure_*` method:
+- first run `created`, `object` carries the identifier;
+- second run with the same arguments: `changed` empty **and `$fake->writes` unchanged** (the count is the actual test, Review Focus 2);
+- a changed key: `updated`, exactly one writing call, the fields not named stay.
 
-Dazu im Einzelnen:
-- `ensure_user`: `attributes` werden zusammengeführt, nicht ersetzt; **`password` wird nur beim Anlegen gesetzt** — der zweite Lauf mit demselben `password` ruft `set_password` nicht (`$fake->requests` enthält genau ein `set_password`); `groups` als Namensliste.
-- `ensure_oauth2_provider`: `scopes` statt `property_mappings`; die von authentik umsortierte Liste ergibt beim zweiten Lauf nichts; `redirect_uris` ohne `redirect_uri_type` ergeben beim zweiten Lauf nichts; **ohne `grant_types` beim Anlegen ein Validation-Fehler**, der sagt warum; mit vorhandenem Provider ist `grant_types` nicht nötig.
-- `ensure_application`: `provider_name`; ein Slug, der schon mit anderem Namen existiert, wird aktualisiert, nicht neu angelegt.
-- `ensure_token`: `expires` als Argument ist ein Validation-Fehler (authentik ignoriert es, Spec 5.2); `expiring => \0` geht.
-- `ensure_stage`: `not_configured_action` und `configuration_stages` kommen in **einem** PATCH (geprüft über `$fake->requests`).
-- `ensure_binding`: `flow` und `stage` als Slug und Name; ein zweiter Lauf mit derselben `order` ändert nichts; eine andere `order` aktualisiert die vorhandene Bindung, statt eine zweite anzulegen.
-- `ensure_*` löscht nichts: ein Feld, das der aktuelle Zustand hat und der gewünschte nicht, bleibt.
+In detail:
+- `ensure_user`: `attributes` are merged, not replaced; **`password` is only set on creation** — the second run with the same `password` does not call `set_password` (`$fake->requests` contains exactly one `set_password`); `groups` as a list of names.
+- `ensure_oauth2_provider`: `scopes` instead of `property_mappings`; the list reordered by authentik yields nothing on the second run; `redirect_uris` without `redirect_uri_type` yield nothing on the second run; **without `grant_types` on creation a validation error** that says why; with an existing provider `grant_types` is not needed.
+- `ensure_application`: `provider_name`; a slug that already exists with a different name is updated, not created again.
+- `ensure_token`: `expires` as an argument is a validation error (authentik ignores it, spec 5.2); `expiring => \0` works.
+- `ensure_stage`: `not_configured_action` and `configuration_stages` come in **one** PATCH (checked via `$fake->requests`).
+- `ensure_binding`: `flow` and `stage` as slug and name; a second run with the same `order` changes nothing; a different `order` updates the existing binding instead of creating a second one.
+- `ensure_*` deletes nothing: a field that the current state has and the wanted one does not, stays.
 
-- [ ] **Step 3: Tests laufen lassen, sie müssen scheitern**
+- [ ] **Step 3: Run the tests, they must fail**
 
 Run: `prove -lr t/51-api-ensure.t t/52-api-resolve.t` — Expected: FAIL.
 
-- [ ] **Step 4: Den Abschnitt `resolve` schreiben**
+- [ ] **Step 4: Write the section `resolve`**
 
 ```perl
 ####  resolve
@@ -1148,13 +1148,13 @@ sub _resolve_one {
 }
 ```
 
-Die `=method resolve`-POD führt die Tabelle auf: je Feld, was als rohe Kennung gilt
-(Integer-PK oder UUID-Form) und wie der Name erzwungen wird (`<feld>_name` beziehungsweise
-`<feld>_slug`). Sie sagt ausdrücklich, dass ein Provider namens `123` über `provider_name`
-angesprochen werden muss, weil `provider => '123'` der PK 123 ist — und dass beides zugleich
-abgelehnt wird.
+The `=method resolve` POD lists the table: per field, what counts as a raw identifier
+(integer PK or UUID form) and how the name is forced (`<field>_name` or
+`<field>_slug`). It says explicitly that a provider named `123` has to be addressed via `provider_name`,
+because `provider => '123'` is the PK 123 — and that both at once
+are rejected.
 
-- [ ] **Step 5: Den Abschnitt `ensure` schreiben**
+- [ ] **Step 5: Write the section `ensure`**
 
 ```perl
 ####  ensure
@@ -1173,13 +1173,13 @@ sub _ensure {
 }
 ```
 
-Jede `ensure_*`-Methode ist dann:
-1. Pflichtschlüssel prüfen (Validation-Fehler, wenn er fehlt);
+Every `ensure_*` method is then:
+1. check the required key (validation error if it is missing);
 2. `my $rep = $self->resolve( \%rep )`;
-3. Hilfsschlüssel aus dem Vergleich nehmen (`password` beim Nutzer);
-4. `_ensure` mit `find`, `create`, `update`, `wanted`.
+3. take helper keys out of the comparison (`password` for the user);
+4. `_ensure` with `find`, `create`, `update`, `wanted`.
 
-Die Besonderheiten je Methode:
+The particulars per method:
 
 ```perl
 sub ensure_user {
@@ -1246,57 +1246,57 @@ sub ensure_binding {
 }
 ```
 
-`ensure_application` (Schlüssel `slug`), `ensure_group` (`name`), `ensure_scope_mapping`
-(`name`), `ensure_flow` (`slug`) und `ensure_stage( $type, %rep )` (`name`, gesucht über
-`find_stage`, angelegt und geändert über den typisierten Pfad) folgen dem Muster ohne
-Besonderheit.
+`ensure_application` (key `slug`), `ensure_group` (`name`), `ensure_scope_mapping`
+(`name`), `ensure_flow` (`slug`) and `ensure_stage( $type, %rep )` (`name`, looked up via
+`find_stage`, created and changed via the typed path) follow the pattern without
+particulars.
 
-Jede bekommt ihre `=method`-POD mit Aufrufbeispiel, dem Schlüssel, über den gesucht wird,
-und der Rückgabe `{ object, changed }`.
+Each gets its `=method` POD with a call example, the key it looks up by,
+and the return value `{ object, changed }`.
 
-- [ ] **Step 6: Tests laufen lassen, committen**
+- [ ] **Step 6: Run the tests, commit**
 
 Run: `prove -lr t` — Expected: PASS.
-Commit: Betreff `Add name resolution and the ensure methods`.
+Commit: subject `Add name resolution and the ensure methods`.
 
 ---
 
-### Task 6: Live-Suite, Executor-Hilfsmodul, Stand nachziehen
+### Task 6: Live suite, executor helper module, bring up to date
 
 **Files:**
 - Create: `t/lib/AuthentikExecutor.pm`, `t/90-live-authentik.t`
 - Modify: `README.md`, `Changes`, `CLAUDE.md`, `.claude/skills/www-authentik-core/SKILL.md`, `t/00-load.t`
 
 **Interfaces:**
-- Consumes: die ganze Dist.
-- Produces: `AuthentikExecutor->new( base_url =>, flow => $slug )` mit
+- Consumes: the whole dist.
+- Produces: `AuthentikExecutor->new( base_url =>, flow => $slug )` with
   `->start`, `->submit( \%answer )`, `->component`, `->challenge`, `->ua`,
-  `->login( username =>, password =>, totp_secret => )` → 1 oder Tod mit der Meldung des
-  Executors, `->enroll_totp` → das Base32-Geheimnis, `->authorization_code( %param )` → der
-  Code aus der 302, `->totp($secret)` → der aktuelle Code.
+  `->login( username =>, password =>, totp_secret => )` → 1 or death with the message of the
+  executor, `->enroll_totp` → the Base32 secret, `->authorization_code( %param )` → the
+  code from the 302, `->totp($secret)` → the current code.
 
-- [ ] **Step 1: `t/lib/AuthentikExecutor.pm` schreiben**
+- [ ] **Step 1: Write `t/lib/AuthentikExecutor.pm`**
 
-Kein Teil der öffentlichen API (Spec 11, Punkt 7). Eine eigene `LWP::UserAgent`-Instanz mit
-`cookie_jar` und `max_redirect => 0`. Der Ablauf ist Spec 8.3:
+Not part of the public API (spec 11, point 7). Its own `LWP::UserAgent` instance with
+`cookie_jar` and `max_redirect => 0`. The flow is spec 8.3:
 
-- `start`: `GET <base>/api/v3/flows/executor/<flow>/?query=` mit `Accept: application/json`.
-- `submit( \%answer )`: `POST` auf dieselbe Adresse mit JSON, Header `X-authentik-CSRF` aus
-  dem Cookie `authentik_csrf`. Eine Antwort 302 heißt „nächste Stage“: danach wird `GET`
-  wiederholt, bis eine 200 kommt (höchstens fünfmal, dann Tod).
-- `login`: `ak-stage-identification` mit `uid_field`, dann `ak-stage-password` mit
-  `password`, dann, wenn `ak-stage-authenticator-validate` kommt und ein Geheimnis da ist,
-  `code` plus `selected_challenge` aus `device_challenges[0]`. `ak-stage-access-denied`
-  bricht mit `error_message` ab (das ist die Antwort bei erzwungenem TOTP ohne Gerät).
-  Am Ende `xak-flow-redirect`.
-- `enroll_totp`: derselbe Ablauf gegen `default-authenticator-totp-setup`, das Geheimnis aus
-  dem `config_url` (`secret=`), dann `code` aus dem Geheimnis zurück.
-- `authorization_code`: `GET <base>/application/o/authorize/?…` mit den Cookies, der Code
-  kommt aus dem `Location`.
-- `totp`: RFC 6238, HMAC-SHA1, sechs Stellen, 30 Sekunden, Base32-Geheimnis
-  (`MIME::Base32` ist keine Kernabhängigkeit — das Dekodieren steht als zehn Zeilen im Modul).
+- `start`: `GET <base>/api/v3/flows/executor/<flow>/?query=` with `Accept: application/json`.
+- `submit( \%answer )`: `POST` to the same address with JSON, header `X-authentik-CSRF` from
+  the cookie `authentik_csrf`. A 302 response means "next stage": afterwards `GET` is
+  repeated until a 200 comes (at most five times, then death).
+- `login`: `ak-stage-identification` with `uid_field`, then `ak-stage-password` with
+  `password`, then, if `ak-stage-authenticator-validate` comes and a secret is present,
+  `code` plus `selected_challenge` from `device_challenges[0]`. `ak-stage-access-denied`
+  aborts with `error_message` (that is the response for enforced TOTP without a device).
+  At the end `xak-flow-redirect`.
+- `enroll_totp`: the same flow against `default-authenticator-totp-setup`, the secret from
+  the `config_url` (`secret=`), then `code` from the secret back.
+- `authorization_code`: `GET <base>/application/o/authorize/?…` with the cookies, the code
+  comes from the `Location`.
+- `totp`: RFC 6238, HMAC-SHA1, six digits, 30 seconds, Base32 secret
+  (`MIME::Base32` is not a core dependency — the decoding is ten lines in the module).
 
-- [ ] **Step 2: `t/90-live-authentik.t` schreiben**
+- [ ] **Step 2: Write `t/90-live-authentik.t`**
 
 ```perl
 BEGIN {
@@ -1305,11 +1305,11 @@ BEGIN {
 }
 ```
 
-Ein Präfix `wwwak-live-<8 zufällige Buchstaben>` vor jedem Namen und Slug. Ein `END`-Block
-räumt in umgekehrter Reihenfolge auf (Bindung, Stage, Flow, Application, Provider, Mapping,
-Token, Nutzer, Gruppe) und schluckt dabei jeden Fehler.
+A prefix `wwwak-live-<8 random letters>` before every name and slug. An `END` block
+cleans up in reverse order (binding, stage, flow, application, provider, mapping,
+token, user, group) and swallows every error while doing so.
 
-Hilfsfunktion:
+Helper function:
 
 ```perl
 sub twice {
@@ -1324,62 +1324,62 @@ sub twice {
 
 Subtests:
 
-1. `instance` — `version` nennt die Version per `diag`, `me` liefert den Admin.
-2. `objects, twice` — `twice` für Gruppe, Nutzer (mit `password` und `group_names`),
-   Scope-Mapping, Provider (mit `scopes`, `grant_types`, `redirect_uris` ohne
-   `redirect_uri_type`, `authorization_flow` und `invalidation_flow` als Slug,
-   `signing_key_name`), Application (mit `provider_name`), Flow, Stage, Bindung, Token.
-   Danach je ein geänderter Schlüssel → `updated`, und die nicht genannten Felder stehen noch.
-   `ensure_oauth2_provider` ohne `grant_types` wirft.
-3. `OIDC` — `discovery`, `issuer`, `jwks`; `client_credentials_token` mit dem Secret des
-   Providers, `verify_token( type => 'access' )` und `type => 'id'`; `userinfo`;
-   `introspect` (`active` wahr); `revoke`, danach `introspect` falsch und `userinfo` wirft
-   mit 401; `device_authorization` und `device_token` bis `authorization_pending`.
-4. `a login and the second factor` — der Executor meldet den Nutzer mit Passwort an,
-   holt über `authorization_code` einen Code, tauscht ihn mit
-   `exchange_authorization_code` und prüft `amr` gleich `['pwd']` sowie `auth_time`;
-   dann `enroll_totp`, ein zweiter Login mit dem Code, und `amr` gleich `['pwd','mfa']`.
-   `refresh_token` behält `amr` und `auth_time`.
-5. `clean up` — alles gelöscht, ein `find_*` liefert nichts mehr.
+1. `instance` — `version` reports the version via `diag`, `me` returns the admin.
+2. `objects, twice` — `twice` for group, user (with `password` and `group_names`),
+   scope mapping, provider (with `scopes`, `grant_types`, `redirect_uris` without
+   `redirect_uri_type`, `authorization_flow` and `invalidation_flow` as a slug,
+   `signing_key_name`), application (with `provider_name`), flow, stage, binding, token.
+   Afterwards one changed key each → `updated`, and the fields not named are still there.
+   `ensure_oauth2_provider` without `grant_types` throws.
+3. `OIDC` — `discovery`, `issuer`, `jwks`; `client_credentials_token` with the provider's
+   secret, `verify_token( type => 'access' )` and `type => 'id'`; `userinfo`;
+   `introspect` (`active` true); `revoke`, afterwards `introspect` false and `userinfo` throws
+   with 401; `device_authorization` and `device_token` up to `authorization_pending`.
+4. `a login and the second factor` — the executor logs the user in with a password,
+   fetches a code via `authorization_code`, exchanges it with
+   `exchange_authorization_code` and checks `amr` equal to `['pwd']` as well as `auth_time`;
+   then `enroll_totp`, a second login with the code, and `amr` equal to `['pwd','mfa']`.
+   `refresh_token` keeps `amr` and `auth_time`.
+5. `clean up` — everything deleted, a `find_*` returns nothing any more.
 
-- [ ] **Step 3: Gegen die Wegwerf-Instanz laufen lassen**
+- [ ] **Step 3: Run against the throwaway instance**
 
-Run: `AUTHENTIK_LIVE_TEST=1 AUTHENTIK_URL=http://127.0.0.1:9000 AUTHENTIK_TOKEN=<Bootstrap-Token> prove -lv t/90-live-authentik.t`
-Expected: PASS, fünf Subtests, `diag` nennt `2026.8.3`. Die Suite läuft zweimal
-hintereinander grün (sie hängt nicht an den Objekten des ersten Laufs).
+Run: `AUTHENTIK_LIVE_TEST=1 AUTHENTIK_URL=http://127.0.0.1:9000 AUTHENTIK_TOKEN=<bootstrap token> prove -lv t/90-live-authentik.t`
+Expected: PASS, five subtests, `diag` names `2026.8.3`. The suite runs green twice
+in a row (it does not depend on the objects of the first run).
 
-- [ ] **Step 4: `README.md`, `Changes`, `CLAUDE.md`, die Kern-Skill und `t/00-load.t` nachziehen**
+- [ ] **Step 4: Bring `README.md`, `Changes`, `CLAUDE.md`, the core skill and `t/00-load.t` up to date**
 
-- `README.md`: Synopsis, Beschreibung, je ein Beispiel für `oidc`, die Grundoperationen und
-  `ensure_*`, der Abschnitt zu den Live-Tests mit dem Compose-File, die Lizenz.
-- `Changes`: ein Eintrag je Bereich unter `{{$NEXT}}`, kein „Initial skeleton“ mehr.
-- `CLAUDE.md` und `.claude/skills/www-authentik-core/SKILL.md`: „Skeleton state“ raus, die
-  gebaute Modulkarte rein, Spec und Plan verlinkt.
-- `t/00-load.t`: alle neun Module.
+- `README.md`: synopsis, description, one example each for `oidc`, the basic operations and
+  `ensure_*`, the section on the live tests with the compose file, the license.
+- `Changes`: one entry per area under `{{$NEXT}}`, no "Initial skeleton" any more.
+- `CLAUDE.md` and `.claude/skills/www-authentik-core/SKILL.md`: "Skeleton state" out, the
+  built module map in, spec and plan linked.
+- `t/00-load.t`: all nine modules.
 
-- [ ] **Step 5: Alles laufen lassen, committen**
+- [ ] **Step 5: Run everything, commit**
 
-Run: `prove -lr t && dzil test --all` — Expected: beide PASS.
-Commit: Betreff `Add the live suite and bring the docs to the built state`.
+Run: `prove -lr t && dzil test --all` — Expected: both PASS.
+Commit: subject `Add the live suite and bring the docs to the built state`.
 
 ---
 
-## Selbstprüfung gegen die Spec
+## Self-check against the spec
 
-- **5.1 Grundoperationen** → Aufgabe 4, Methodentabelle; jede Zeile der Spec-Tabelle kommt vor.
-- **5.2 `ensure_*`** → Aufgabe 5, mit allen fünf Regeln (nur Genanntes, erst vergleichen, Listen als Mengen, Defaults, Passwort nur beim Anlegen, nichts löschen).
-- **5.3 Was anders zurückkommt** → `Diff` (Aufgabe 1) und `FakeAuthentik` (Aufgabe 2).
-- **6 OIDC** → Aufgabe 3, alle Methoden der Spec-Tabelle; kein `password_token`, wie die Spec sagt.
-- **6.1 Issuer und Tokenart** → `issuer` aus dem Discovery-Dokument, `type` als Heuristik.
-- **6.2 Zweiter Faktor** → Aufgabe 6, Subtest 4, mit erzwungenem TOTP im Executor-Hilfsmodul.
-- **7 Fehler** → Aufgabe 2, alle vier Formen, `field_errors`, kein `is_conflict`.
-- **8 Beobachtetes** → `FakeAuthentik` antwortet so; die Live-Suite prüft es am echten System.
-- **9 Zwilling** → `build_request`/`read_response` getrennt (Aufgabe 2), `_paged` und
-  `resolve` als eigene Methoden (Aufgaben 4 und 5), damit der Zwilling sie asynchron nachbaut.
-- **10 Tests und Phasen** → Aufgaben 1 bis 6; Phase 2 und 3 sind nicht Teil dieses Plans.
-- **11 Entscheidungen** → `api` als Subclient (Aufgabe 4), keine `Auth`-Klasse (Aufgabe 3),
-  `grant_types` Pflicht (Aufgabe 5), Auflösung je Feld (Aufgabe 5), Executor in `t/lib`
-  (Aufgabe 6), Compose-File schon vorhanden.
-- **12 Review** → Rückgabeform in der POD der Fassade (Aufgabe 3), Auflösung ohne Raten
-  (Aufgabe 5, Review Focus 1), `type` als Heuristik (Aufgabe 3), erzwungenes TOTP vor dem
-  Bau beobachtet und in 6.2 und 8.3 nachgetragen.
+- **5.1 Basic operations** → task 4, method table; every row of the spec table appears.
+- **5.2 `ensure_*`** → task 5, with all five rules (only what is named, compare first, lists as sets, defaults, password only on creation, delete nothing).
+- **5.3 What comes back differently** → `Diff` (task 1) and `FakeAuthentik` (task 2).
+- **6 OIDC** → task 3, all methods of the spec table; no `password_token`, as the spec says.
+- **6.1 Issuer and token type** → `issuer` from the discovery document, `type` as a heuristic.
+- **6.2 Second factor** → task 6, subtest 4, with enforced TOTP in the executor helper module.
+- **7 Errors** → task 2, all four forms, `field_errors`, no `is_conflict`.
+- **8 Observed** → `FakeAuthentik` answers like that; the live suite checks it on the real system.
+- **9 Twin** → `build_request`/`read_response` separate (task 2), `_paged` and
+  `resolve` as methods of their own (tasks 4 and 5), so the twin rebuilds them asynchronously.
+- **10 Tests and phases** → tasks 1 to 6; phase 2 and 3 are not part of this plan.
+- **11 Decisions** → `api` as the sub-client (task 4), no `Auth` class (task 3),
+  `grant_types` required (task 5), resolution per field (task 5), executor in `t/lib`
+  (task 6), compose file already present.
+- **12 Review** → return shape in the facade's POD (task 3), resolution without guessing
+  (task 5, Review Focus 1), `type` as a heuristic (task 3), enforced TOTP observed before
+  the build and added in 6.2 and 8.3.
